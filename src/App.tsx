@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { cellsOf, createGame, updatePlayer } from './game/engine'
+import { advanceResolution, cellsOf, createGame, updatePlayer } from './game/engine'
 import { EDITABLE_COLORS, setGarbage, setNextPair, setPairColors, setPairRotation } from './game/editor'
 import { appendFrame, createReplay, frameToGame, moveCursor, REPLAY_SPEEDS, type ReplayState } from './game/replay'
 import { cloneGameState, deleteSnapshot, listSnapshots, makeSnapshot, saveSnapshot, type Snapshot } from './game/snapshots'
@@ -10,11 +10,13 @@ const COLOR_MAP: Record<PuyoColor, string> = { 1: '#ff5b68', 2: '#ffd45a', 3: '#
 const COLOR_NAMES: Record<PuyoColor, string> = { 1: '赤', 2: '黄', 3: '緑', 4: '青' }
 
 function BoardView({ player, editable, onCell }: { player: PlayerState; editable?: boolean; onCell?: (x: number, y: number) => void }) {
-  const active = new Map(cellsOf(player.current).map((cell) => [`${cell.x},${cell.y}`, cell.color]))
+  const active = player.resolution ? new Map<string, PuyoColor>() : new Map(cellsOf(player.current).map((cell) => [`${cell.x},${cell.y}`, cell.color]))
+  const clearing = new Set((player.resolution?.pendingGroups ?? []).flatMap((group) => group.map(({ x, y }) => `${x},${y}`)))
   return <div className="board" aria-label="ゲーム盤面">{Array.from({ length: ROWS * COLS }, (_, index) => {
     const x = index % COLS, y = Math.floor(index / COLS)
-    const color = active.get(`${x},${y}`) ?? player.board[y][x]
-    return <button className={`cell ${editable ? 'editable-cell' : ''}`} key={`${x}-${y}`} onClick={() => editable && onCell?.(x, y)} disabled={!editable}>{color && <span className="puyo" style={{ background: COLOR_MAP[color] }} />}</button>
+    const key = `${x},${y}`
+    const color = active.get(key) ?? player.board[y][x]
+    return <button className={`cell ${editable ? 'editable-cell' : ''} ${clearing.has(key) ? 'clearing-cell' : ''}`} key={key} onClick={() => editable && onCell?.(x, y)} disabled={!editable}>{color && <span className="puyo" style={{ background: COLOR_MAP[color] }} />}</button>
   })}</div>
 }
 
@@ -53,6 +55,14 @@ export default function App() {
   }, [dispatch])
 
   useEffect(() => { const timer = window.setInterval(() => setGame((current) => { if (!current.running) return current; const players: [PlayerState, PlayerState] = [...current.players] as [PlayerState, PlayerState]; players.forEach((player, index) => { if (player.controlMode === 'human') players[index] = updatePlayer(player, 'soft-drop') }); const nextGame = { ...current, players, tick: current.tick + 1 }; setReplay((r) => appendFrame(r, nextGame)); return nextGame }), 900); return () => window.clearInterval(timer) }, [])
+  useEffect(() => { const timer = window.setInterval(() => setGame((current) => {
+    if (!current.running || !current.players.some((player) => player.resolution)) return current
+    const players: [PlayerState, PlayerState] = [...current.players] as [PlayerState, PlayerState]
+    players.forEach((player, index) => { if (player.resolution) players[index] = advanceResolution(player) })
+    const nextGame = { ...current, players, tick: current.tick + 1 }
+    setReplay((r) => appendFrame(r, nextGame))
+    return nextGame
+  }), 180); return () => window.clearInterval(timer) }, [])
   useEffect(() => { const timer = window.setInterval(() => setReplay((current) => { if (!current.playing || current.frames.length < 2) return current; const next = moveCursor(current, 1); setGame(frameToGame(next.frames[next.cursor], false)); return next.cursor === current.frames.length - 1 ? { ...next, playing: false } : next }), Math.max(40, 250 / replay.speed)); return () => window.clearInterval(timer) }, [replay.speed])
 
   const setMode = (index: 0 | 1, mode: PlayerState['controlMode']) => setGame((current) => { const players: [PlayerState, PlayerState] = [...current.players] as [PlayerState, PlayerState]; players[index] = { ...players[index], controlMode: mode }; return { ...current, players } })
