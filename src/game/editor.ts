@@ -29,6 +29,26 @@ export function setBoardCell(game: GameState, playerIndex: 0 | 1, x: number, y: 
   return { ...game, players }
 }
 
+export function clearBoard(game: GameState, playerIndex: 0 | 1): GameState {
+  const players: [PlayerState, PlayerState] = [...game.players] as [PlayerState, PlayerState]
+  const board: Board = players[playerIndex].board.map((row) => row.map(() => null))
+  players[playerIndex] = { ...players[playerIndex], board }
+  return { ...game, players }
+}
+
+export function fillBoard(game: GameState, playerIndex: 0 | 1, color: PuyoColor): GameState {
+  const players: [PlayerState, PlayerState] = [...game.players] as [PlayerState, PlayerState]
+  const board: Board = players[playerIndex].board.map((row) => row.map(() => color))
+  players[playerIndex] = { ...players[playerIndex], board }
+  return { ...game, players }
+}
+
+export function cycleBoardColor(color: PuyoColor | null): PuyoColor | null {
+  if (color === null) return EDITABLE_COLORS[0]
+  const index = EDITABLE_COLORS.indexOf(color)
+  return index < 0 || index === EDITABLE_COLORS.length - 1 ? null : EDITABLE_COLORS[index + 1]
+}
+
 export function setPlayer(player: PlayerState, patch: Partial<Pick<PlayerState, 'current' | 'next' | 'garbage'>>): PlayerState {
   return { ...player, ...patch }
 }
