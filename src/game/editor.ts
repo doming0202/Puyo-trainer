@@ -1,6 +1,6 @@
 import type { ActivePair, Board, GameState, Pair, PlayerState, PuyoColor } from './types'
 
-export const EDITABLE_COLORS: PuyoColor[] = [1, 2, 3, 4, 5]
+export const EDITABLE_COLORS: PuyoColor[] = [1, 2, 3, 4]
 
 export function setPairColors(player: PlayerState, axis: PuyoColor, child: PuyoColor): PlayerState { return { ...player, current: { ...player.current, pair: { axis, child } } } }
 export function setPairRotation(player: PlayerState, rotation: ActivePair['rotation']): PlayerState { return { ...player, current: { ...player.current, rotation } } }
