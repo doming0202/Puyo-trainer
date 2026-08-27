@@ -1,4 +1,4 @@
-import { COLS, ROWS, type ActivePair, type Board, type GameState, type Pair, type PlayerState, type PuyoColor, type Rotation, type ResolutionState } from './types'
+import { COLS, ROWS, type ActivePair, type Board, type GameState, type Pair, type PlayerState, type PuyoColor, type Rotation } from './types'
 
 export const COLORS: PuyoColor[] = [1, 2, 3, 4]
 
