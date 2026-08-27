@@ -45,7 +45,7 @@ export function appendFrame(replay: ReplayState, game: GameState, elapsedMs?: nu
   if (last && last.tick === frame.tick) {
     if (nextElapsed <= last.elapsedMs) return replay
     const frames = replay.frames.slice()
-    frames[frames.length - 1] = { ...last, elapsedMs: nextElapsed }
+    frames[frames.length - 1] = frame
     return { ...replay, frames }
   }
   const frames = replay.frames.slice(0, replay.cursor + 1)
