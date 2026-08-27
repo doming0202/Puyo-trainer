@@ -1,4 +1,4 @@
-import { COLS, ROWS, type ActivePair, type Board, type GameState, type Pair, type PlayerState, type PuyoColor, type Rotation } from './types'
+import { COLS, ROWS, type ActivePair, type Board, type GameState, type Pair, type PlayerState, type PuyoColor, type Rotation, type ResolutionState } from './types'
 
 export const COLORS: PuyoColor[] = [1, 2, 3, 4]
 
@@ -63,11 +63,13 @@ export function canPlace(board: Board, pair: ActivePair): boolean {
 }
 
 export function movePair(player: PlayerState, dx: number): PlayerState {
+  if (player.resolution) return player
   const candidate = { ...player.current, x: player.current.x + dx }
   return canPlace(player.board, candidate) ? { ...player, current: candidate } : player
 }
 
 export function rotatePair(player: PlayerState, direction: 1 | -1): PlayerState {
+  if (player.resolution) return player
   const rotation = ((player.current.rotation + direction + 4) % 4) as Rotation
   const candidates = [
     { ...player.current, rotation },
@@ -79,56 +81,89 @@ export function rotatePair(player: PlayerState, direction: 1 | -1): PlayerState 
 }
 
 export function stepDown(player: PlayerState): PlayerState {
+  if (player.resolution) return player
   const candidate = { ...player.current, y: player.current.y + 1 }
-  return canPlace(player.board, candidate) ? { ...player, current: candidate } : lockPair(player)
+  return canPlace(player.board, candidate) ? { ...player, current: candidate } : beginPlacement(player)
 }
 
 export function hardDrop(player: PlayerState): PlayerState {
+  if (player.resolution) return player
   let current = player.current
   while (canPlace(player.board, { ...current, y: current.y + 1 })) {
     current = { ...current, y: current.y + 1 }
   }
-  return resolvePlacement({ ...player, current })
+  return beginPlacement({ ...player, current })
 }
 
-function lockPair(player: PlayerState): PlayerState {
-  return resolvePlacement(player)
-}
-
-function resolvePlacement(player: PlayerState): PlayerState {
+function beginPlacement(player: PlayerState): PlayerState {
   const board = player.board.map((row) => [...row])
   for (const { x, y, color } of cellsOf(player.current)) {
     if (y >= 0 && y < ROWS && x >= 0 && x < COLS) board[y][x] = color
   }
 
-  let score = player.score
-  let chain = 0
-  let working = applyGravity(board)
+  return {
+    ...player,
+    board,
+    resolution: {
+      stage: 'gravity',
+      pendingGroups: [],
+    },
+    chain: 0,
+  }
+}
 
-  while (true) {
-    const groups = findGroups(working)
-    const removable = groups.filter((group) => group.length >= 4)
-    if (removable.length === 0) break
-    chain += 1
-    let cleared = 0
-    for (const group of removable) {
-      cleared += group.length
-      for (const { x, y } of group) working[y][x] = null
+export function advanceResolution(player: PlayerState): PlayerState {
+  const resolution = player.resolution
+  if (!resolution) return player
+
+  if (resolution.stage === 'gravity') {
+    const board = applyGravity(player.board)
+    const groups = findGroups(board).filter((group) => group.length >= 4)
+
+    if (groups.length === 0) {
+      return finishPlacement({ ...player, board })
     }
-    const colorBonus = Math.max(0, removable.length - 1) * 3
-    score += cleared * 10 * Math.max(1, chain + colorBonus)
-    working = applyGravity(working)
+
+    return {
+      ...player,
+      board,
+      chain: player.chain + 1,
+      resolution: {
+        stage: 'clear',
+        pendingGroups: groups,
+      },
+    }
   }
 
+  const board = player.board.map((row) => [...row])
+  let cleared = 0
+  for (const group of resolution.pendingGroups) {
+    cleared += group.length
+    for (const { x, y } of group) board[y][x] = null
+  }
+
+  const colorBonus = Math.max(0, resolution.pendingGroups.length - 1) * 3
+  const score = player.score + cleared * 10 * Math.max(1, player.chain + colorBonus)
+
+  return {
+    ...player,
+    board,
+    score,
+    resolution: {
+      stage: 'gravity',
+      pendingGroups: [],
+    },
+  }
+}
+
+function finishPlacement(player: PlayerState): PlayerState {
   const nextPair = player.next[0] ?? randomPair()
   const next = [...player.next.slice(1), randomPair()]
   return {
     ...player,
-    board: working,
     current: spawnPair(nextPair),
     next,
-    score,
-    chain,
+    resolution: undefined,
   }
 }
 
