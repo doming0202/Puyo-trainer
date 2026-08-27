@@ -48,16 +48,25 @@ export default function App() {
   useEffect(() => {
     if (replaySelected !== previousReplaySelected.current) {
       setReplay(current => {
-        if (replaySelected) {
-          if (current.frames.length < 2) return { ...current, playing: false }
-          if (current.cursor >= current.frames.length - 1) return { ...current, cursor: 0, playing: true }
-          return { ...current, playing: true }
-        }
-        return { ...current, playing: false }
+        if (!replaySelected) return { ...current, playing: false }
+
+        const replayPlayers = game.players.map(player => player.controlMode) as [PlayerState['controlMode'], PlayerState['controlMode']]
+        const frames = current.frames.map(frame => ({
+          ...frame,
+          players: [
+            { ...frame.players[0], controlMode: replayPlayers[0] === 'replay' ? 'replay' : frame.players[0].controlMode },
+            { ...frame.players[1], controlMode: replayPlayers[1] === 'replay' ? 'replay' : frame.players[1].controlMode },
+          ] as [PlayerState, PlayerState],
+        }))
+
+        const normalized = { ...current, frames }
+        if (normalized.frames.length < 2) return { ...normalized, playing: false }
+        if (normalized.cursor >= normalized.frames.length - 1) return { ...normalized, cursor: 0, playing: true }
+        return { ...normalized, playing: true }
       })
       previousReplaySelected.current = replaySelected
     }
-  }, [replaySelected])
+  }, [replaySelected, game.players])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
