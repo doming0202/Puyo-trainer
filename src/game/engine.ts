@@ -165,6 +165,7 @@ function finishPlacement(player: PlayerState): PlayerState {
     return {
       ...player,
       alive: false,
+      controlMode: 'game-over',
       resolution: undefined,
     }
   }
