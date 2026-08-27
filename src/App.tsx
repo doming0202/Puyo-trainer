@@ -26,6 +26,13 @@ function NextView({ player, editable, onPair }: { player: PlayerState; editable?
 
 function nextColor(color: PuyoColor): PuyoColor { const index = EDITABLE_COLORS.indexOf(color); return EDITABLE_COLORS[(index + 1) % EDITABLE_COLORS.length] }
 
+function countBoardColors(player: PlayerState): Record<PuyoColor, number> {
+  const counts: Record<PuyoColor, number> = { 1: 0, 2: 0, 3: 0, 4: 0 }
+  player.board.forEach((row) => row.forEach((cell) => { if (cell !== null && cell >= 1 && cell <= 4) counts[cell] += 1 }))
+  if (!player.resolution) cellsOf(player.current).forEach(({ color }) => { counts[color] += 1 })
+  return counts
+}
+
 export default function App() {
   const [game, setGame] = useState<GameState>(() => createGame())
   const [replay, setReplay] = useState<ReplayState>(() => createReplay(game))
@@ -95,4 +102,7 @@ export default function App() {
   </main>
 }
 
-function PlayerPanel({ title, player, onMode, nextVisible }: { title: string; player: PlayerState; onMode: (mode: PlayerState['controlMode']) => void; nextVisible: number }) { return <article className="player-card"><div className="player-header"><div><span className="player-label">PLAYER</span><h2>{title}</h2></div><span className={`mode ${player.controlMode}`}>{player.controlMode}</span></div><div className="game-row"><div className="board-stage"><BoardView player={player} /><div className={`chain-counter ${player.chain > 0 ? 'visible' : ''}`} aria-live="polite"><span>CHAIN</span><strong>{player.chain}</strong></div><div className={`resolution-state ${player.resolution ? 'visible' : ''}`}>{player.resolution?.stage === 'clear' ? 'CLEAR' : player.resolution ? 'DROP' : ''}</div><div className="score">SCORE <b>{player.score.toLocaleString()}</b>{player.chain > 0 && <span>CHAIN {player.chain}</span>}</div></div><aside><div className="aside-label">NEXT</div><NextView player={{ ...player, next: player.next.slice(0, nextVisible) }} /><div className="aside-label garbage-label">GARBAGE</div><div className="garbage">{player.garbage}</div></aside></div><div className="mode-buttons">{(['human', 'fixed', 'replay', 'none'] as const).map((mode) => <button className={player.controlMode === mode ? 'selected' : ''} key={mode} onClick={() => onMode(mode)}>{mode}</button>)}</div></article> }
+function PlayerPanel({ title, player, onMode, nextVisible }: { title: string; player: PlayerState; onMode: (mode: PlayerState['controlMode']) => void; nextVisible: number }) {
+  const colorCounts = countBoardColors(player)
+  return <article className="player-card"><div className="player-header"><div><span className="player-label">PLAYER</span><h2>{title}</h2></div><span className={`mode ${player.controlMode}`}>{player.controlMode}</span></div><div className="game-row"><div className="board-stage"><BoardView player={player} /><div className={`resolution-state ${player.resolution ? 'visible' : ''}`}>{player.resolution?.stage === 'clear' ? 'CLEAR' : player.resolution ? 'DROP' : ''}</div><div className="score">SCORE <b>{player.score.toLocaleString()}</b></div></div><aside><div className="aside-label">NEXT</div><NextView player={{ ...player, next: player.next.slice(0, nextVisible) }} /><div className="aside-label garbage-label">GARBAGE</div><div className="garbage">{player.garbage}</div><div className="color-counts" aria-label="色ごとのぷよ数"><div className="aside-label color-counts-title">PUYO COUNT</div>{([1,2,3,4] as const).map((color) => <div className="color-count-row" key={color}><span className="color-dot" style={{ background: COLOR_MAP[color] }} /><span className="color-name">{COLOR_NAMES[color]}</span><strong>{colorCounts[color]}</strong></div>)}</div></aside></div><div className="mode-buttons">{(['human', 'fixed', 'replay', 'none'] as const).map((mode) => <button className={player.controlMode === mode ? 'selected' : ''} key={mode} onClick={() => onMode(mode)}>{mode}</button>)}</div></article>
+}
