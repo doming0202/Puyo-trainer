@@ -74,15 +74,9 @@ export default function App() {
       const key = event.key.toLowerCase()
 
       if (key === 'f') {
-        if (!editMode && replaySelected) {
+        if (!editMode) {
           event.preventDefault()
-          setReplay(current => {
-            if (current.frames.length < 2) return current
-            if (current.cursor >= current.frames.length - 1) {
-              return { ...current, cursor: 0, playing: true }
-            }
-            return { ...current, playing: !current.playing }
-          })
+          setGame(current => ({ ...current, running: !current.running }))
         }
         return
       }
@@ -95,7 +89,7 @@ export default function App() {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [dispatch, editMode, replaySelected])
+  }, [dispatch, editMode])
 
   useEffect(() => { const timer = window.setInterval(() => setGame(current => { if (!current.running || editMode || replaySelected) return current; const players = [...current.players] as [PlayerState, PlayerState]; players.forEach((player, index) => { if (player.controlMode === 'human' && player.alive && !player.resolution) players[index] = updatePlayer(player, 'soft-drop') }); const nextGame = { ...current, players, tick: current.tick + 1 }; setReplay(r => appendFrame(r, nextGame)); return nextGame }), 900); return () => window.clearInterval(timer) }, [editMode, replaySelected])
   useEffect(() => { const timer = window.setInterval(() => setGame(current => { if (!current.running || editMode || replaySelected || !current.players.some(player => player.resolution)) return current; const players = [...current.players] as [PlayerState, PlayerState]; players.forEach((player,index) => { if (player.resolution) players[index] = advanceResolution(player) }); const nextGame = { ...current, players, tick: current.tick + 1 }; setReplay(r => appendFrame(r, nextGame)); return nextGame }), 420); return () => window.clearInterval(timer) }, [editMode, replaySelected])
@@ -123,7 +117,7 @@ export default function App() {
   {libraryOpen && <section className="library-panel"><div className="library-header"><div><div className="aside-label">SNAPSHOT LIBRARY</div><strong>保存局面 {snapshots.length} 件</strong></div><button onClick={()=>setLibraryOpen(false)}>閉じる</button></div>{snapshots.length===0?<div className="empty-library">まだ保存された局面はありません。</div>:<div className="snapshot-list">{snapshots.map(snapshot=><div className="snapshot-item" key={snapshot.id}><div className="snapshot-info"><strong>{snapshot.title}</strong><span>Tick {snapshot.sourceTick} · {new Date(snapshot.createdAt).toLocaleString('ja-JP')}</span>{snapshot.tags.length>0&&<div className="tags">{snapshot.tags.map(tag=><em key={tag}>{tag}</em>)}</div>}</div><div className="snapshot-actions"><button onClick={()=>loadSnapshot(snapshot)}>読み込む</button><button onClick={()=>void removeSnapshot(snapshot.id)}>削除</button></div></div>)}</div>}</section>}
   {message && <div className="status-message">{message}</div>}
   <section className="arena"><PlayerPanel title="A" player={game.players[0]} onMode={mode=>setMode(0,mode)} nextVisible={nextVisible} editMode={editMode&&editPlayer===0} onBoardChange={setEditedBoard} onPairEdit={setEditedPair} editableControls={{changeCurrentColor,rotateCurrent,changeNext,changeGarbage,setGarbageValue}}/><div className="vs"><span>VS</span><small>LOCAL</small></div><PlayerPanel title="B" player={game.players[1]} onMode={mode=>setMode(1,mode)} nextVisible={nextVisible} editMode={editMode&&editPlayer===1} onBoardChange={setEditedBoard} onPairEdit={setEditedPair} editableControls={{changeCurrentColor,rotateCurrent,changeNext,changeGarbage,setGarbageValue}}/></section>
-  <section className="replay-panel"><div className="replay-header"><div><div className="aside-label">REPLAY</div><strong>Frame {replay.cursor+1} / {replay.frames.length}</strong></div><span>{activeFrame?.tick??0} tick</span></div><input className="timeline" type="range" min="0" max={Math.max(0,replay.frames.length-1)} value={replay.cursor} onChange={e=>seek(Number(e.target.value))}/><div className="replay-controls"><button onClick={()=>seek(0)} disabled={!replaySelected}>⏮</button><button onClick={()=>setReplay(r=>{if(!replaySelected)return r;const n=moveCursor(r,-1);setGame(frameToGame(n.frames[n.cursor],false));return {...n,playing:false}})} disabled={!replaySelected}>◀</button><button className="play" onClick={togglePlayback} disabled={!replaySelected}>{replay.playing?'⏸':'▶'}</button><button onClick={()=>setReplay(r=>{if(!replaySelected)return r;const n=moveCursor(r,1);setGame(frameToGame(n.frames[n.cursor],false));return {...n,playing:false}})} disabled={!replaySelected}>▶</button><button onClick={()=>seek(replay.frames.length-1)} disabled={!replaySelected}>⏭</button><div className="speed-buttons">{REPLAY_SPEEDS.map(speed=><button className={replay.speed===speed?'selected':''} key={speed} onClick={()=>setReplay(r=>({...r,speed}))}>{speed}x</button>)}</div></div><div className="replay-hint">REPLAY選択中のみ再生 · Fキーで再生 / 停止</div></section>
+  <section className="replay-panel"><div className="replay-header"><div><div className="aside-label">REPLAY</div><strong>Frame {replay.cursor+1} / {replay.frames.length}</strong></div><span>{activeFrame?.tick??0} tick</span></div><input className="timeline" type="range" min="0" max={Math.max(0,replay.frames.length-1)} value={replay.cursor} onChange={e=>seek(Number(e.target.value))}/><div className="replay-controls"><button onClick={()=>seek(0)} disabled={!replaySelected}>⏮</button><button onClick={()=>setReplay(r=>{if(!replaySelected)return r;const n=moveCursor(r,-1);setGame(frameToGame(n.frames[n.cursor],false));return {...n,playing:false}})} disabled={!replaySelected}>◀</button><button className="play" onClick={togglePlayback} disabled={!replaySelected}>{replay.playing?'⏸':'▶'}</button><button onClick={()=>setReplay(r=>{if(!replaySelected)return r;const n=moveCursor(r,1);setGame(frameToGame(n.frames[n.cursor],false));return {...n,playing:false}})} disabled={!replaySelected}>▶</button><button onClick={()=>seek(replay.frames.length-1)} disabled={!replaySelected}>⏭</button><div className="speed-buttons">{REPLAY_SPEEDS.map(speed=><button className={replay.speed===speed?'selected':''} key={speed} onClick={()=>setReplay(r=>({...r,speed}))}>{speed}x</button>)}</div></div><div className="replay-hint">REPLAY選択中のみ再生 · Fキーでゲーム再開 / 停止</div></section>
   <section className="controls"><div><strong>A</strong> ← → 移動　↑ 回転　↓ 落下　Space ハードドロップ</div><div><strong>B</strong> A / D 移動　W / Q・E 回転　S 落下</div></section><footer>独自ゲームエンジン · 公式素材・データ不使用 · Phase 4 Position Editor</footer></main>
 }
 
