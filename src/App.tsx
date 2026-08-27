@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { cellsOf, createGame, updatePlayer } from './game/engine'
 import { appendFrame, createReplay, frameToGame, moveCursor, REPLAY_SPEEDS, type ReplayState } from './game/replay'
+import { cloneGameState, deleteSnapshot, listSnapshots, makeSnapshot, saveSnapshot, type Snapshot } from './game/snapshots'
 import { COLS, ROWS, type GameState, type PlayerState, type PuyoColor } from './game/types'
 import './styles.css'
 
@@ -24,8 +25,18 @@ function NextView({ player }: { player: PlayerState }) {
 export default function App() {
   const [game, setGame] = useState<GameState>(() => createGame())
   const [replay, setReplay] = useState<ReplayState>(() => createReplay(game))
+  const [snapshots, setSnapshots] = useState<Snapshot[]>([])
+  const [libraryOpen, setLibraryOpen] = useState(false)
+  const [snapshotTitle, setSnapshotTitle] = useState('')
+  const [snapshotTags, setSnapshotTags] = useState('')
+  const [message, setMessage] = useState('')
   const gameRef = useRef(game); gameRef.current = game
-  const replayRef = useRef(replay); replayRef.current = replay
+
+  const refreshSnapshots = useCallback(async () => {
+    try { setSnapshots(await listSnapshots()) } catch { setMessage('局面ライブラリを読み込めませんでした') }
+  }, [])
+
+  useEffect(() => { void refreshSnapshots() }, [refreshSnapshots])
 
   const dispatch = useCallback((playerIndex: 0 | 1, action: Parameters<typeof updatePlayer>[1]) => {
     setGame((current) => {
@@ -69,8 +80,9 @@ export default function App() {
     const timer = window.setInterval(() => setReplay((current) => {
       if (!current.playing || current.frames.length < 2) return current
       const next = moveCursor(current, 1)
+      setGame(frameToGame(next.frames[next.cursor], false))
       if (next.cursor === current.frames.length - 1) return { ...next, playing: false }
-      setGame(frameToGame(next.frames[next.cursor], false)); return next
+      return next
     }), Math.max(40, 250 / replay.speed))
     return () => window.clearInterval(timer)
   }, [replay.speed])
@@ -80,7 +92,7 @@ export default function App() {
     players[index] = { ...players[index], controlMode: mode }; return { ...current, players }
   })
 
-  const reset = () => { const next = createGame(); setGame(next); setReplay(createReplay(next)) }
+  const reset = () => { const next = createGame(); setGame(next); setReplay(createReplay(next)); setMessage('') }
   const seek = (cursor: number) => setReplay((current) => {
     const next = { ...current, cursor: Math.max(0, Math.min(current.frames.length - 1, cursor)), playing: false }
     setGame(frameToGame(next.frames[next.cursor], false)); return next
@@ -90,19 +102,48 @@ export default function App() {
     if (current.cursor >= current.frames.length - 1) return { ...current, cursor: 0, playing: true }
     return { ...current, playing: !current.playing }
   })
+
+  const saveCurrentSnapshot = async () => {
+    try {
+      const snapshot = makeSnapshot(game, snapshotTitle, snapshotTags.split(',').map((tag) => tag.trim()))
+      await saveSnapshot(snapshot)
+      setSnapshotTitle(''); setSnapshotTags(''); setMessage('局面を保存しました'); await refreshSnapshots(); setLibraryOpen(true)
+    } catch { setMessage('局面の保存に失敗しました') }
+  }
+
+  const loadSnapshot = (snapshot: Snapshot) => {
+    const restored = cloneGameState(snapshot.state)
+    setGame(restored)
+    setReplay(createReplay(restored))
+    setLibraryOpen(false)
+    setMessage(`「${snapshot.title}」を読み込みました`)
+  }
+
+  const removeSnapshot = async (id: string) => {
+    try { await deleteSnapshot(id); await refreshSnapshots(); setMessage('局面を削除しました') } catch { setMessage('局面の削除に失敗しました') }
+  }
+
   const activeFrame = replay.frames[replay.cursor]
 
   return <main className="app">
-    <header className="topbar"><div><div className="eyebrow">PUZZLE COACHING LAB</div><h1>Puyo Trainer</h1></div><div className="header-actions"><span className="phase">Phase 2 · Replay</span><button onClick={reset}>新しいゲーム</button></div></header>
+    <header className="topbar"><div><div className="eyebrow">PUZZLE COACHING LAB</div><h1>Puyo Trainer</h1></div><div className="header-actions"><span className="phase">Phase 3 · Snapshots</span><button onClick={() => setLibraryOpen((open) => !open)}>局面ライブラリ {snapshots.length}</button><button onClick={reset}>新しいゲーム</button></div></header>
+
+    <section className="snapshot-panel">
+      <div><div className="aside-label">SNAPSHOT</div><strong>現在の局面を保存</strong><span>盤面・現在ぷよ・NEXT・スコア・モードを復元できます</span></div>
+      <div className="snapshot-form"><input value={snapshotTitle} onChange={(e) => setSnapshotTitle(e.target.value)} placeholder="局面名（例：階段土台）" /><input value={snapshotTags} onChange={(e) => setSnapshotTags(e.target.value)} placeholder="タグ（カンマ区切り）" /><button onClick={() => void saveCurrentSnapshot()}>保存</button></div>
+    </section>
+
+    {libraryOpen && <section className="library-panel"><div className="library-header"><div><div className="aside-label">SNAPSHOT LIBRARY</div><strong>保存局面 {snapshots.length} 件</strong></div><button onClick={() => setLibraryOpen(false)}>閉じる</button></div>{snapshots.length === 0 ? <div className="empty-library">まだ保存された局面はありません。</div> : <div className="snapshot-list">{snapshots.map((snapshot) => <div className="snapshot-item" key={snapshot.id}><div className="snapshot-info"><strong>{snapshot.title}</strong><span>Tick {snapshot.sourceTick} · {new Date(snapshot.createdAt).toLocaleString('ja-JP')}</span>{snapshot.tags.length > 0 && <div className="tags">{snapshot.tags.map((tag) => <em key={tag}>{tag}</em>)}</div>}</div><div className="snapshot-actions"><button onClick={() => loadSnapshot(snapshot)}>読み込む</button><button onClick={() => void removeSnapshot(snapshot.id)}>削除</button></div></div>)}</div>}</section>}
+
+    {message && <div className="status-message">{message}</div>}
     <section className="arena"><PlayerPanel title="A" player={game.players[0]} onMode={(mode) => setMode(0, mode)} /><div className="vs"><span>VS</span><small>LOCAL</small></div><PlayerPanel title="B" player={game.players[1]} onMode={(mode) => setMode(1, mode)} /></section>
     <section className="replay-panel">
       <div className="replay-header"><div><div className="aside-label">REPLAY</div><strong>Frame {replay.cursor + 1} / {replay.frames.length}</strong></div><span>{activeFrame?.tick ?? 0} tick</span></div>
       <input className="timeline" type="range" min="0" max={Math.max(0, replay.frames.length - 1)} value={replay.cursor} onChange={(e) => seek(Number(e.target.value))} />
-      <div className="replay-controls"><button onClick={() => seek(0)}>⏮</button><button onClick={() => setReplay((r) => { const n = moveCursor(r, -1); setGame(frameToGame(n.frames[n.cursor], false)); return { ...n, playing: false } })}>◀</button><button className="play" onClick={togglePlayback}>{replay.playing ? '⏸' : '▶'}</button><button onClick={() => setReplay((r) => { const n = moveCursor(r, 1); setGame(frameToGame(n.frames[n.cursor], false)); return { ...n, playing: false } })}>▶</button><button onClick={() => seek(replay.frames.length - 1)}>⏭</button>
-        <div className="speed-buttons">{REPLAY_SPEEDS.map((speed) => <button className={replay.speed === speed ? 'selected' : ''} key={speed} onClick={() => setReplay((r) => ({ ...r, speed }))}>{speed}x</button>)}</div></div>
+      <div className="replay-controls"><button onClick={() => seek(0)}>⏮</button><button onClick={() => setReplay((r) => { const n = moveCursor(r, -1); setGame(frameToGame(n.frames[n.cursor], false)); return { ...n, playing: false } })}>◀</button><button className="play" onClick={togglePlayback}>{replay.playing ? '⏸' : '▶'}</button><button onClick={() => setReplay((r) => { const n = moveCursor(r, 1); setGame(frameToGame(n.frames[n.cursor], false)); return { ...n, playing: false } })}>▶</button><button onClick={() => seek(replay.frames.length - 1)}>⏭</button><div className="speed-buttons">{REPLAY_SPEEDS.map((speed) => <button className={replay.speed === speed ? 'selected' : ''} key={speed} onClick={() => setReplay((r) => ({ ...r, speed }))}>{speed}x</button>)}</div></div>
     </section>
     <section className="controls"><div><strong>A</strong> ← → 移動　↑ 回転　↓ 落下　Space ハードドロップ</div><div><strong>B</strong> A / D 移動　W / Q・E 回転　S 落下</div></section>
-    <footer>独自ゲームエンジン · 公式素材・データ不使用 · Replay frame-based</footer>
+    <footer>独自ゲームエンジン · 公式素材・データ不使用 · IndexedDB snapshots</footer>
   </main>
 }
 
