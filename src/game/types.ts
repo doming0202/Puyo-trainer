@@ -22,6 +22,16 @@ export interface ActivePair {
 
 export type ControlMode = 'human' | 'replay' | 'fixed' | 'none'
 
+export interface GroupCell {
+  x: number
+  y: number
+}
+
+export interface ResolutionState {
+  stage: 'gravity' | 'clear'
+  pendingGroups: GroupCell[][]
+}
+
 export interface PlayerState {
   board: Board
   current: ActivePair
@@ -31,6 +41,7 @@ export interface PlayerState {
   chain: number
   controlMode: ControlMode
   alive: boolean
+  resolution?: ResolutionState
 }
 
 export interface GameState {
