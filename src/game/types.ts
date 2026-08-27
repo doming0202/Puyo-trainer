@@ -20,7 +20,7 @@ export interface ActivePair {
   rotation: Rotation
 }
 
-export type ControlMode = 'human' | 'replay' | 'fixed' | 'none'
+export type ControlMode = 'human' | 'replay' | 'fixed' | 'none' | 'game-over'
 
 export interface GroupCell {
   x: number
