@@ -34,6 +34,7 @@ export default function App() {
   const [snapshotTags, setSnapshotTags] = useState('')
   const [message, setMessage] = useState('')
   const gameRef = useRef(game); gameRef.current = game
+  const replayRef = useRef(replay); replayRef.current = replay
 
   const refreshSnapshots = useCallback(async () => { try { setSnapshots(await listSnapshots()) } catch { setMessage('局面ライブラリを読み込めませんでした') } }, []); useEffect(() => { void refreshSnapshots() }, [refreshSnapshots])
   const editPlayerState = (fn: (player: PlayerState) => PlayerState) => setGame(current => { const players = [...current.players] as [PlayerState, PlayerState]; players[editPlayer] = fn(players[editPlayer]); return { ...current, players } })
@@ -89,7 +90,7 @@ export default function App() {
 
   useEffect(() => { const timer = window.setInterval(() => setGame(current => { if (!current.running || editMode || replaySelected) return current; const players = [...current.players] as [PlayerState, PlayerState]; players.forEach((player, index) => { if (player.controlMode === 'human' && player.alive && !player.resolution) players[index] = updatePlayer(player, 'soft-drop') }); const nextGame = { ...current, players, tick: current.tick + 1 }; setReplay(r => appendFrame(r, nextGame)); return nextGame }), 900); return () => window.clearInterval(timer) }, [editMode, replaySelected])
   useEffect(() => { const timer = window.setInterval(() => setGame(current => { if (!current.running || editMode || replaySelected || !current.players.some(player => player.resolution)) return current; const players = [...current.players] as [PlayerState, PlayerState]; players.forEach((player,index) => { if (player.resolution) players[index] = advanceResolution(player) }); const nextGame = { ...current, players, tick: current.tick + 1 }; setReplay(r => appendFrame(r, nextGame)); return nextGame }), 420); return () => window.clearInterval(timer) }, [editMode, replaySelected])
-  useEffect(() => { const timer = window.setInterval(() => setReplay(current => { if (editMode || !replaySelected || !current.playing || current.frames.length < 2) return current; const next = moveCursor(current,1); setGame(frameToGame(next.frames[next.cursor], false)); return next.cursor === current.frames.length - 1 ? { ...next, playing:false } : next }), Math.max(40,250 / replay.speed)); return () => window.clearInterval(timer) }, [replay.speed, editMode, replaySelected])
+  useEffect(() => { const timer = window.setInterval(() => setGame(currentGame => { const currentReplay = replayRef.current; if (editMode || !replaySelected || !currentReplay.playing || currentReplay.frames.length < 2) return currentGame; const nextReplay = moveCursor(currentReplay,1); const nextGame = frameToGame(nextReplay.frames[nextReplay.cursor], false); nextGame.players[0].controlMode = currentGame.players[0].controlMode; nextGame.players[1].controlMode = currentGame.players[1].controlMode; setReplay(nextReplay.cursor === currentReplay.frames.length - 1 ? { ...nextReplay, playing:false } : nextReplay); return nextGame }), Math.max(40,250 / replay.speed)); return () => window.clearInterval(timer) }, [replay.speed, editMode, replaySelected])
 
   const setMode = (index: 0 | 1, mode: PlayerState['controlMode']) => setGame(current => {
     const players = [...current.players] as [PlayerState, PlayerState]
