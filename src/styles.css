@@ -33,6 +33,15 @@ aside { width:74px; padding-top:4px; }
 .mode-buttons { display:flex; gap:7px; margin-top:16px; }
 .mode-buttons button { flex:1; padding:7px 4px; font-size:11px; color:#9aa5b6; }
 .mode-buttons button.selected { background:#2b3545; color:#f2f5fa; border-color:#58667c; }
+.replay-panel { margin-top:20px; padding:16px 18px; background:rgba(18,22,30,.88); border:1px solid #293140; border-radius:14px; }
+.replay-header { display:flex; justify-content:space-between; align-items:end; color:#8994a5; font-size:12px; }
+.replay-header strong { display:block; color:#e7edf5; margin-top:4px; font-size:14px; }
+.timeline { width:100%; margin:14px 0 10px; accent-color:#8fd7ff; }
+.replay-controls { display:flex; align-items:center; gap:7px; flex-wrap:wrap; }
+.replay-controls .play { min-width:52px; font-weight:800; }
+.speed-buttons { display:flex; gap:5px; margin-left:auto; }
+.speed-buttons button { min-width:42px; padding:6px 7px; font-size:11px; color:#9aa5b6; }
+.speed-buttons button.selected { background:#2b3545; color:#f2f5fa; border-color:#58667c; }
 .controls { display:flex; justify-content:center; gap:28px; flex-wrap:wrap; margin:20px 0; color:#7f8999; font-size:12px; }
 .controls strong { color:#cfd6e1; }
 footer { text-align:center; color:#4f5a6b; font-size:11px; margin-top:30px; }
