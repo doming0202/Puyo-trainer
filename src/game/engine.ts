@@ -63,13 +63,13 @@ export function canPlace(board: Board, pair: ActivePair): boolean {
 }
 
 export function movePair(player: PlayerState, dx: number): PlayerState {
-  if (player.resolution) return player
+  if (!player.alive || player.resolution) return player
   const candidate = { ...player.current, x: player.current.x + dx }
   return canPlace(player.board, candidate) ? { ...player, current: candidate } : player
 }
 
 export function rotatePair(player: PlayerState, direction: 1 | -1): PlayerState {
-  if (player.resolution) return player
+  if (!player.alive || player.resolution) return player
   const rotation = ((player.current.rotation + direction + 4) % 4) as Rotation
   const candidates = [
     { ...player.current, rotation },
@@ -81,13 +81,13 @@ export function rotatePair(player: PlayerState, direction: 1 | -1): PlayerState 
 }
 
 export function stepDown(player: PlayerState): PlayerState {
-  if (player.resolution) return player
+  if (!player.alive || player.resolution) return player
   const candidate = { ...player.current, y: player.current.y + 1 }
   return canPlace(player.board, candidate) ? { ...player, current: candidate } : beginPlacement(player)
 }
 
 export function hardDrop(player: PlayerState): PlayerState {
-  if (player.resolution) return player
+  if (!player.alive || player.resolution) return player
   let current = player.current
   while (canPlace(player.board, { ...current, y: current.y + 1 })) {
     current = { ...current, y: current.y + 1 }
@@ -114,7 +114,7 @@ function beginPlacement(player: PlayerState): PlayerState {
 
 export function advanceResolution(player: PlayerState): PlayerState {
   const resolution = player.resolution
-  if (!resolution) return player
+  if (!resolution || !player.alive) return player
 
   if (resolution.stage === 'gravity') {
     const board = applyGravity(player.board)
@@ -159,9 +159,19 @@ export function advanceResolution(player: PlayerState): PlayerState {
 function finishPlacement(player: PlayerState): PlayerState {
   const nextPair = player.next[0] ?? randomPair()
   const next = [...player.next.slice(1), randomPair()]
+  const nextCurrent = spawnPair(nextPair)
+
+  if (!canPlace(player.board, nextCurrent)) {
+    return {
+      ...player,
+      alive: false,
+      resolution: undefined,
+    }
+  }
+
   return {
     ...player,
-    current: spawnPair(nextPair),
+    current: nextCurrent,
     next,
     resolution: undefined,
   }
