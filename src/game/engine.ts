@@ -1,3 +1,4 @@
+import { playComboSound } from './sound'
 import { COLS, ROWS, type ActivePair, type Board, type GameState, type Pair, type PlayerState, type PuyoColor, type Rotation } from './types'
 
 export const COLORS: PuyoColor[] = [1, 2, 3, 4]
@@ -30,7 +31,9 @@ export function advanceResolution(player: PlayerState): PlayerState {
   if (resolution.stage === 'gravity') {
     const board = applyGravity(player.board); const groups = findGroups(board).filter((group) => group.length >= 4)
     if (groups.length === 0) return finishPlacement({ ...player, board })
-    return { ...player, board, chain: player.chain + 1, resolution: { stage: 'clear', pendingGroups: groups } }
+    const chain = player.chain + 1
+    playComboSound(chain)
+    return { ...player, board, chain, resolution: { stage: 'clear', pendingGroups: groups } }
   }
   const board = player.board.map((row) => [...row]); let cleared = 0
   for (const group of resolution.pendingGroups) { cleared += group.length; for (const { x, y } of group) board[y][x] = null }
