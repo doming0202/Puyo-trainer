@@ -1,9 +1,9 @@
 import { useEffect, useState, type MouseEvent } from 'react'
 import { COLS, ROWS, type Board, type PuyoColor } from '../game/types'
 
-const COLORS: PuyoColor[] = [1, 2, 3, 4, 5]
-const COLOR_NAMES: Record<PuyoColor, string> = { 1: '赤', 2: '黄', 3: '緑', 4: '青', 5: '紫' }
-const COLOR_MAP: Record<PuyoColor, string> = { 1: '#ff5b68', 2: '#ffd45a', 3: '#58d68d', 4: '#5aa7ff', 5: '#b66cff' }
+const COLORS: PuyoColor[] = [1, 2, 3, 4]
+const COLOR_NAMES: Record<PuyoColor, string> = { 1: '赤', 2: '青', 3: '緑', 4: '紫' }
+const COLOR_MAP: Record<PuyoColor, string> = { 1: '#ff5b68', 2: '#5aa7ff', 3: '#58d68d', 4: '#b66cff' }
 type Point = { x: number; y: number }
 type Pair = { axis: PuyoColor; child: PuyoColor }
 const keyOf = (p: Point) => `${p.x},${p.y}`
