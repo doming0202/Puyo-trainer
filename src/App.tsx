@@ -42,7 +42,6 @@ export default function App() {
   const refreshSnapshots = useCallback(async () => { try { setSnapshots(await listSnapshots()) } catch { setMessage('局面ライブラリを読み込めませんでした') } }, [])
   useEffect(() => { void refreshSnapshots() }, [refreshSnapshots])
 
-  const commitGame = (nextGame: GameState) => { setGame(nextGame); setReplay((r) => appendFrame(r, nextGame)) }
   const editPlayerState = (fn: (player: PlayerState) => PlayerState) => setGame((current) => { const players: [PlayerState, PlayerState] = [...current.players] as [PlayerState, PlayerState]; players[editPlayer] = fn(players[editPlayer]); return { ...current, players } })
 
   const dispatch = useCallback((playerIndex: 0 | 1, action: Parameters<typeof updatePlayer>[1]) => {
@@ -54,7 +53,7 @@ export default function App() {
     window.addEventListener('keydown', onKeyDown); return () => window.removeEventListener('keydown', onKeyDown)
   }, [dispatch])
 
-  useEffect(() => { const timer = window.setInterval(() => setGame((current) => { if (!current.running) return current; const players: [PlayerState, PlayerState] = [...current.players] as [PlayerState, PlayerState]; players.forEach((player, index) => { if (player.controlMode === 'human') players[index] = updatePlayer(player, 'soft-drop') }); const nextGame = { ...current, players, tick: current.tick + 1 }; setReplay((r) => appendFrame(r, nextGame)); return nextGame }), 900); return () => window.clearInterval(timer) }, [])
+  useEffect(() => { const timer = window.setInterval(() => setGame((current) => { if (!current.running) return current; const players: [PlayerState, PlayerState] = [...current.players] as [PlayerState, PlayerState]; players.forEach((player, index) => { if (player.controlMode === 'human' && !player.resolution) players[index] = updatePlayer(player, 'soft-drop') }); const nextGame = { ...current, players, tick: current.tick + 1 }; setReplay((r) => appendFrame(r, nextGame)); return nextGame }), 900); return () => window.clearInterval(timer) }, [])
   useEffect(() => { const timer = window.setInterval(() => setGame((current) => {
     if (!current.running || !current.players.some((player) => player.resolution)) return current
     const players: [PlayerState, PlayerState] = [...current.players] as [PlayerState, PlayerState]
@@ -62,7 +61,7 @@ export default function App() {
     const nextGame = { ...current, players, tick: current.tick + 1 }
     setReplay((r) => appendFrame(r, nextGame))
     return nextGame
-  }), 180); return () => window.clearInterval(timer) }, [])
+  }), 420); return () => window.clearInterval(timer) }, [])
   useEffect(() => { const timer = window.setInterval(() => setReplay((current) => { if (!current.playing || current.frames.length < 2) return current; const next = moveCursor(current, 1); setGame(frameToGame(next.frames[next.cursor], false)); return next.cursor === current.frames.length - 1 ? { ...next, playing: false } : next }), Math.max(40, 250 / replay.speed)); return () => window.clearInterval(timer) }, [replay.speed])
 
   const setMode = (index: 0 | 1, mode: PlayerState['controlMode']) => setGame((current) => { const players: [PlayerState, PlayerState] = [...current.players] as [PlayerState, PlayerState]; players[index] = { ...players[index], controlMode: mode }; return { ...current, players } })
@@ -96,4 +95,4 @@ export default function App() {
   </main>
 }
 
-function PlayerPanel({ title, player, onMode, nextVisible }: { title: string; player: PlayerState; onMode: (mode: PlayerState['controlMode']) => void; nextVisible: number }) { return <article className="player-card"><div className="player-header"><div><span className="player-label">PLAYER</span><h2>{title}</h2></div><span className={`mode ${player.controlMode}`}>{player.controlMode}</span></div><div className="game-row"><div><BoardView player={player} /><div className="score">SCORE <b>{player.score.toLocaleString()}</b>{player.chain > 0 && <span>CHAIN {player.chain}</span>}</div></div><aside><div className="aside-label">NEXT</div><NextView player={{ ...player, next: player.next.slice(0, nextVisible) }} /><div className="aside-label garbage-label">GARBAGE</div><div className="garbage">{player.garbage}</div></aside></div><div className="mode-buttons">{(['human', 'fixed', 'replay', 'none'] as const).map((mode) => <button className={player.controlMode === mode ? 'selected' : ''} key={mode} onClick={() => onMode(mode)}>{mode}</button>)}</div></article> }
+function PlayerPanel({ title, player, onMode, nextVisible }: { title: string; player: PlayerState; onMode: (mode: PlayerState['controlMode']) => void; nextVisible: number }) { return <article className="player-card"><div className="player-header"><div><span className="player-label">PLAYER</span><h2>{title}</h2></div><span className={`mode ${player.controlMode}`}>{player.controlMode}</span></div><div className="game-row"><div className="board-stage"><BoardView player={player} /><div className={`chain-counter ${player.chain > 0 ? 'visible' : ''}`} aria-live="polite"><span>CHAIN</span><strong>{player.chain}</strong></div><div className={`resolution-state ${player.resolution ? 'visible' : ''}`}>{player.resolution?.stage === 'clear' ? 'CLEAR' : player.resolution ? 'DROP' : ''}</div><div className="score">SCORE <b>{player.score.toLocaleString()}</b>{player.chain > 0 && <span>CHAIN {player.chain}</span>}</div></div><aside><div className="aside-label">NEXT</div><NextView player={{ ...player, next: player.next.slice(0, nextVisible) }} /><div className="aside-label garbage-label">GARBAGE</div><div className="garbage">{player.garbage}</div></aside></div><div className="mode-buttons">{(['human', 'fixed', 'replay', 'none'] as const).map((mode) => <button className={player.controlMode === mode ? 'selected' : ''} key={mode} onClick={() => onMode(mode)}>{mode}</button>)}</div></article> }
