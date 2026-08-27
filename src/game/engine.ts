@@ -1,6 +1,6 @@
 import { COLS, ROWS, type ActivePair, type Board, type GameState, type Pair, type PlayerState, type PuyoColor, type Rotation } from './types'
 
-export const COLORS: PuyoColor[] = [1, 2, 3, 4, 5]
+export const COLORS: PuyoColor[] = [1, 2, 3, 4]
 
 export function emptyBoard(): Board {
   return Array.from({ length: ROWS }, () => Array<Cell>(COLS).fill(null))
