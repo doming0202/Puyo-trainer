@@ -42,7 +42,12 @@ export function appendFrame(replay: ReplayState, game: GameState, elapsedMs?: nu
   const last = replay.frames[replay.frames.length - 1]
   const nextElapsed = Math.max(last?.elapsedMs ?? 0, elapsedMs ?? last?.elapsedMs ?? 0)
   const frame = captureFrame(game, nextElapsed)
-  if (last && last.tick === frame.tick) return replay
+  if (last && last.tick === frame.tick) {
+    if (nextElapsed <= last.elapsedMs) return replay
+    const frames = replay.frames.slice()
+    frames[frames.length - 1] = { ...last, elapsedMs: nextElapsed }
+    return { ...replay, frames }
+  }
   const frames = replay.frames.slice(0, replay.cursor + 1)
   frames.push(frame)
   return { ...replay, frames, cursor: frames.length - 1 }
