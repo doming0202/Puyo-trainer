@@ -22,6 +22,9 @@ export function clonePlayer(player: PlayerState): PlayerState {
     board: player.board.map((row) => [...row]),
     current: { ...player.current, pair: { ...player.current.pair } },
     next: player.next.map((pair) => ({ ...pair })),
+    fallElapsedMs: player.fallElapsedMs ?? 0,
+    lockElapsedMs: player.lockElapsedMs ?? 0,
+    quickTurnArmed: player.quickTurnArmed ?? false,
   }
 }
 
