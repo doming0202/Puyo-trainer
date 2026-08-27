@@ -19,10 +19,56 @@ export function createPlayer(controlMode: PlayerState['controlMode'] = 'human'):
 export function createGame(): GameState { return { players: [createPlayer('human'), createPlayer('fixed')], activePlayer: 0, running: true, tick: 0 } }
 export function spawnPair(pair: Pair): ActivePair { return { pair, x: 2, y: 1, rotation: 0 } }
 const OFFSETS: Record<Rotation, readonly [number, number]> = { 0: [0, -1], 1: [1, 0], 2: [0, 1], 3: [-1, 0] }
+
+// A quick-turn is the standard 180-degree flip used when a vertical pair is
+// trapped between both sides. The first blocked rotation arms it; the second
+// rotation input performs the vertical flip, even when the two inputs use
+// different rotation directions.
+const quickTurnArmed = new WeakSet<PlayerState>()
+
 export function cellsOf(pair: ActivePair): Array<{ x: number; y: number; color: PuyoColor }> { const [dx, dy] = OFFSETS[pair.rotation]; return [{ x: pair.x, y: pair.y, color: pair.pair.axis }, { x: pair.x + dx, y: pair.y + dy, color: pair.pair.child }] }
 export function canPlace(board: Board, pair: ActivePair): boolean { return cellsOf(pair).every(({ x, y }) => x >= 0 && x < COLS && y >= 0 && y < ROWS && board[y][x] === null) }
 export function movePair(player: PlayerState, dx: number): PlayerState { if (!player.alive || player.resolution) return player; const candidate = { ...player.current, x: player.current.x + dx }; return canPlace(player.board, candidate) ? { ...player, current: candidate } : player }
-export function rotatePair(player: PlayerState, direction: 1 | -1): PlayerState { if (!player.alive || player.resolution) return player; const rotation = ((player.current.rotation + direction + 4) % 4) as Rotation; const candidates = [{ ...player.current, rotation }, { ...player.current, rotation, x: player.current.x - 1 }, { ...player.current, rotation, x: player.current.x + 1 }]; const valid = candidates.find((candidate) => canPlace(player.board, candidate)); return valid ? { ...player, current: valid } : player }
+export function rotatePair(player: PlayerState, direction: 1 | -1): PlayerState {
+  if (!player.alive || player.resolution) {
+    quickTurnArmed.delete(player)
+    return player
+  }
+
+  const rotation = ((player.current.rotation + direction + 4) % 4) as Rotation
+  const candidates = [
+    { ...player.current, rotation },
+    { ...player.current, rotation, x: player.current.x - 1 },
+    { ...player.current, rotation, x: player.current.x + 1 },
+  ]
+  const valid = candidates.find((candidate) => canPlace(player.board, candidate))
+
+  if (valid) {
+    quickTurnArmed.delete(player)
+    return { ...player, current: valid }
+  }
+
+  const vertical = player.current.rotation === 0 || player.current.rotation === 2
+  if (!vertical) {
+    quickTurnArmed.delete(player)
+    return player
+  }
+
+  const quickRotation = ((player.current.rotation + 2) % 4) as Rotation
+  const quickCandidate = { ...player.current, rotation: quickRotation }
+  if (!canPlace(player.board, quickCandidate)) {
+    quickTurnArmed.delete(player)
+    return player
+  }
+
+  if (!quickTurnArmed.has(player)) {
+    quickTurnArmed.add(player)
+    return player
+  }
+
+  quickTurnArmed.delete(player)
+  return { ...player, current: quickCandidate }
+}
 export function stepDown(player: PlayerState): PlayerState { if (!player.alive || player.resolution) return player; const candidate = { ...player.current, y: player.current.y + 1 }; return canPlace(player.board, candidate) ? { ...player, current: candidate } : beginPlacement(player) }
 export function hardDrop(player: PlayerState): PlayerState { if (!player.alive || player.resolution) return player; let current = player.current; while (canPlace(player.board, { ...current, y: current.y + 1 })) current = { ...current, y: current.y + 1 }; return beginPlacement({ ...player, current }) }
 function beginPlacement(player: PlayerState): PlayerState { const board = player.board.map((row) => [...row]); for (const { x, y, color } of cellsOf(player.current)) if (y >= 0 && y < ROWS && x >= 0 && x < COLS) board[y][x] = color; return { ...player, board, resolution: { stage: 'gravity', pendingGroups: [] }, chain: 0 } }
