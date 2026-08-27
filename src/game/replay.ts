@@ -2,6 +2,7 @@ import type { GameState, PlayerState } from './types'
 
 export interface ReplayFrame {
   tick: number
+  elapsedMs: number
   players: [PlayerState, PlayerState]
   activePlayer: 0 | 1
 }
@@ -24,21 +25,23 @@ export function clonePlayer(player: PlayerState): PlayerState {
   }
 }
 
-export function captureFrame(game: GameState): ReplayFrame {
+export function captureFrame(game: GameState, elapsedMs = 0): ReplayFrame {
   return {
     tick: game.tick,
+    elapsedMs: Math.max(0, elapsedMs),
     players: [clonePlayer(game.players[0]), clonePlayer(game.players[1])],
     activePlayer: game.activePlayer,
   }
 }
 
 export function createReplay(game: GameState): ReplayState {
-  return { frames: [captureFrame(game)], cursor: 0, playing: false, speed: 1 }
+  return { frames: [captureFrame(game, 0)], cursor: 0, playing: false, speed: 1 }
 }
 
-export function appendFrame(replay: ReplayState, game: GameState): ReplayState {
-  const frame = captureFrame(game)
+export function appendFrame(replay: ReplayState, game: GameState, elapsedMs?: number): ReplayState {
   const last = replay.frames[replay.frames.length - 1]
+  const nextElapsed = Math.max(last?.elapsedMs ?? 0, elapsedMs ?? last?.elapsedMs ?? 0)
+  const frame = captureFrame(game, nextElapsed)
   if (last && last.tick === frame.tick) return replay
   const frames = replay.frames.slice(0, replay.cursor + 1)
   frames.push(frame)
@@ -57,6 +60,19 @@ export function frameToGame(frame: ReplayFrame, running = false): GameState {
 export function moveCursor(replay: ReplayState, delta: number): ReplayState {
   const cursor = Math.max(0, Math.min(replay.frames.length - 1, replay.cursor + delta))
   return { ...replay, cursor }
+}
+
+export function findFrameAtElapsed(frames: ReplayFrame[], elapsedMs: number): number {
+  if (frames.length === 0) return 0
+  const target = Math.max(0, elapsedMs)
+  let low = 0
+  let high = frames.length - 1
+  while (low <= high) {
+    const mid = Math.floor((low + high) / 2)
+    if (frames[mid].elapsedMs <= target) low = mid + 1
+    else high = mid - 1
+  }
+  return Math.max(0, Math.min(frames.length - 1, high))
 }
 
 export function resetReplay(game: GameState): ReplayState {
