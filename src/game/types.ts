@@ -42,6 +42,9 @@ export interface PlayerState {
   controlMode: ControlMode
   alive: boolean
   resolution?: ResolutionState
+  fallElapsedMs: number
+  lockElapsedMs: number
+  quickTurnArmed: boolean
 }
 
 export interface GameState {
