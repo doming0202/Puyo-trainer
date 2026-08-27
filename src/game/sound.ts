@@ -36,3 +36,8 @@ export function playComboSound(chain: number): void {
   oscillator.start(now)
   oscillator.stop(now + 0.19)
 }
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('pointerdown', unlockComboAudio, { once: true })
+  window.addEventListener('keydown', unlockComboAudio, { once: true })
+}
