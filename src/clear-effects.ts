@@ -106,14 +106,24 @@ function installBoard(board: HTMLElement): void {
   const observer = new MutationObserver((mutations) => {
     const cells = new Set<HTMLElement>()
     mutations.forEach((mutation) => {
+      if (mutation.target instanceof HTMLElement && mutation.target.closest('.clear-scatter-particle')) return
+
+      if (mutation.type === 'childList') {
+        const changedParticlesOnly = [...mutation.addedNodes, ...mutation.removedNodes].every((node) =>
+          node instanceof Element && node.classList.contains('clear-scatter-particle'),
+        )
+        if (changedParticlesOnly) return
+      }
+
       const target = mutation.target instanceof HTMLElement ? mutation.target.closest<HTMLElement>('.cell') : null
       if (target) cells.add(target)
+
       if (mutation.type === 'childList') {
         mutation.addedNodes.forEach((node) => {
-          if (node instanceof HTMLElement) {
-            const cell = node.closest<HTMLElement>('.cell')
-            if (cell) cells.add(cell)
-          }
+          if (!(node instanceof HTMLElement)) return
+          if (node.classList.contains('clear-scatter-particle')) return
+          const cell = node.closest<HTMLElement>('.cell')
+          if (cell) cells.add(cell)
         })
       }
     })
