@@ -84,9 +84,9 @@ export const GAMEPLAY_ACTION_LABELS: Record<GameplayAction, string> = {
   'rotate-right': '右回転',
   'soft-drop': '落下',
   'hard-drop': 'ハードドロップ',
-  'reset-turn': '現在のぷよ出現直後へ戻す',
-  undo: '一手戻す',
-  redo: 'やり直す',
+  'reset-turn': '⟳ 現在のぷよを最初から',
+  undo: '↶ 一手戻す',
+  redo: '↷ やり直す',
 }
 
 export function formatKeyCode(code: string): string {
