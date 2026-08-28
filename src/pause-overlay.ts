@@ -34,6 +34,25 @@ function ensureOverlay(): HTMLElement {
         user-select:none;
       }
       #${OVERLAY_ID} .pause-message.countdown{font-variant-numeric:tabular-nums}
+
+      /* Direct editing uses the side margin for Pause so the board/editor
+         remains unobstructed. Exiting edit mode automatically restores the
+         full-screen centered presentation above. */
+      body:has(.direct-editor-overlay) #${OVERLAY_ID}{
+        inset:auto 18px auto auto;
+        top:50%;
+        width:clamp(150px,16vw,220px);
+        height:110px;
+        transform:translateY(-50%);
+        background:transparent;
+        backdrop-filter:none;
+      }
+      body:has(.direct-editor-overlay) #${OVERLAY_ID} .pause-message{
+        min-width:0;
+        font-size:clamp(42px,5vw,72px);
+        letter-spacing:.04em;
+        text-shadow:0 4px 20px rgba(0,0,0,.62);
+      }
     `
     document.head.appendChild(style)
   }
