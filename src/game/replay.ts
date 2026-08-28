@@ -107,18 +107,27 @@ export function createReplay(game: GameState): ReplayState {
 }
 
 export function appendFrame(replay: ReplayState, game: GameState, elapsedMs?: number): ReplayState {
-  const last = replay.frames[replay.frames.length - 1]
-  const nextElapsed = Math.max(last?.elapsedMs ?? 0, elapsedMs ?? last?.elapsedMs ?? 0)
+  const currentFrame = replay.frames[replay.cursor]
+  const diverging = replay.cursor < replay.frames.length - 1
+
+  // When continuing from a rewound position, elapsed time must continue from
+  // that position rather than from the Original timeline's final frame.
+  // Otherwise the first resumed frame jumps to the old timeline end and the
+  // active timeline effectively gets stuck at the bottom.
+  const baseElapsed = diverging
+    ? (currentFrame?.elapsedMs ?? 0)
+    : (replay.frames[replay.frames.length - 1]?.elapsedMs ?? 0)
+  const nextElapsed = Math.max(baseElapsed, elapsedMs ?? baseElapsed)
   const frame = captureFrame(game, nextElapsed)
 
-  if (last && last.tick === frame.tick) {
+  const last = replay.frames[replay.frames.length - 1]
+  if (!diverging && last && last.tick === frame.tick) {
     if (nextElapsed <= last.elapsedMs) return replay
     const frames = replay.frames.slice()
     frames[frames.length - 1] = frame
     return { ...replay, frames }
   }
 
-  const diverging = replay.cursor < replay.frames.length - 1
   let originalFrames = replay.originalFrames
   let branchOriginElapsedMs = replay.branchOriginElapsedMs
 
@@ -126,7 +135,7 @@ export function appendFrame(replay: ReplayState, game: GameState, elapsedMs?: nu
   // copy of the complete pre-branch timeline before truncating the active one.
   if (diverging && !originalFrames) {
     originalFrames = cloneFrames(replay.frames)
-    branchOriginElapsedMs = replay.frames[replay.cursor]?.elapsedMs ?? 0
+    branchOriginElapsedMs = currentFrame?.elapsedMs ?? 0
     publishBranchInfo({
       forkElapsedMs: branchOriginElapsedMs,
       originalDurationMs: originalFrames[originalFrames.length - 1]?.elapsedMs ?? branchOriginElapsedMs,
