@@ -1,13 +1,30 @@
 const HEADER_SETTINGS_SELECTOR = '.header-actions > .settings-button'
 const SNAPSHOT_PANEL_SELECTOR = '.snapshot-panel'
 const SNAPSHOT_SETTINGS_ID = 'snapshot-settings-button'
+const SNAPSHOT_LIBRARY_SELECTOR = '.header-actions > button'
+
+function findSnapshotLibraryButton(): HTMLButtonElement | null {
+  return Array.from(
+    document.querySelectorAll<HTMLButtonElement>(SNAPSHOT_LIBRARY_SELECTOR),
+  ).find((button) => button.textContent?.includes('局面ライブラリ')) ?? null
+}
 
 function installSnapshotSettingsButton(): void {
-  const headerButton = document.querySelector<HTMLButtonElement>(HEADER_SETTINGS_SELECTOR)
+  const headerSettingsButton = document.querySelector<HTMLButtonElement>(HEADER_SETTINGS_SELECTOR)
+  const snapshotLibraryButton = findSnapshotLibraryButton()
   const snapshotPanel = document.querySelector<HTMLElement>(SNAPSHOT_PANEL_SELECTOR)
-  if (!headerButton || !snapshotPanel) return
 
-  let snapshotButton = document.getElementById(SNAPSHOT_SETTINGS_ID) as HTMLButtonElement | null
+  if (!headerSettingsButton || !snapshotLibraryButton || !snapshotPanel) return
+
+  // The header library button is the second gear shown by styles.css.
+  // Keep the actual React keybind settings button untouched, but hide the
+  // library trigger from the header because its action now lives in SNAPSHOT.
+  snapshotLibraryButton.style.display = 'none'
+
+  let snapshotButton = document.getElementById(
+    SNAPSHOT_SETTINGS_ID,
+  ) as HTMLButtonElement | null
+
   if (!snapshotButton) {
     snapshotButton = document.createElement('button')
     snapshotButton.id = SNAPSHOT_SETTINGS_ID
@@ -15,24 +32,19 @@ function installSnapshotSettingsButton(): void {
     snapshotPanel.appendChild(snapshotButton)
   }
 
-  snapshotButton.textContent = '🔖'
-  snapshotButton.title = 'キーバインド設定'
-  snapshotButton.setAttribute('aria-label', 'キーバインド設定')
   snapshotButton.className = 'settings-button snapshot-settings-button'
-  snapshotButton.onclick = () => headerButton.click()
-}
+  snapshotButton.textContent = '🔖'
+  snapshotButton.title = '局面ライブラリ'
+  snapshotButton.setAttribute('aria-label', '局面ライブラリ')
+  snapshotButton.onclick = () => snapshotLibraryButton.click()
 
-function removeInjectedHeaderButton(): void {
-  const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>('.header-actions > .settings-button'))
-  if (buttons.length > 1) {
-    buttons.slice(1).forEach((button) => button.remove())
-  }
+  // The header keybind settings button remains exactly where React placed it.
+  headerSettingsButton.style.display = ''
 }
 
 function install(): void {
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
-      removeInjectedHeaderButton()
       installSnapshotSettingsButton()
     })
   })
