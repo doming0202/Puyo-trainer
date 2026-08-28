@@ -27,9 +27,17 @@ export interface GroupCell {
   y: number
 }
 
+export interface FallingCell {
+  x: number
+  y: number
+  fromY: number
+  color: PuyoColor
+}
+
 export interface ResolutionState {
   stage: 'gravity' | 'clear'
   pendingGroups: GroupCell[][]
+  fallingCells?: FallingCell[]
 }
 
 export interface PlayerState {
