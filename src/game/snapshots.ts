@@ -1,5 +1,6 @@
 import { snapshotTurnState } from './history'
-import type { GameState, PlayerState } from './types'
+import { emptyHiddenBoard } from './engine'
+import type { GameState, PlayerState, TurnState } from './types'
 
 export interface Snapshot {
   id: string
@@ -56,17 +57,58 @@ export async function deleteSnapshot(id: string): Promise<void> {
   })
 }
 
+function normalizeHidden(hidden: PlayerState['hidden'] | undefined): PlayerState['hidden'] {
+  if (Array.isArray(hidden) && hidden.length === 2) return hidden.map((row) => [...row])
+  return emptyHiddenBoard()
+}
+
+function normalizeTurnState(state: TurnState, fallback: PlayerState): TurnState {
+  return {
+    ...state,
+    board: state.board?.map((row) => [...row]) ?? fallback.board.map((row) => [...row]),
+    hidden: normalizeHidden(state.hidden),
+    current: state.current ? { ...state.current, pair: { ...state.current.pair } } : { ...fallback.current, pair: { ...fallback.current.pair } },
+    next: state.next?.map((pair) => ({ ...pair })) ?? fallback.next.map((pair) => ({ ...pair })),
+    garbage: state.garbage ?? fallback.garbage,
+    score: state.score ?? fallback.score,
+    chain: state.chain ?? fallback.chain,
+    controlMode: state.controlMode ?? fallback.controlMode,
+    alive: state.alive ?? fallback.alive,
+    resolution: state.resolution ? structuredClone(state.resolution) : undefined,
+    fallElapsedMs: state.fallElapsedMs ?? 0,
+    lockElapsedMs: state.lockElapsedMs ?? 0,
+    quickTurnArmed: state.quickTurnArmed ?? false,
+  }
+}
+
 function normalizePlayer(player: PlayerState): PlayerState {
-  const normalized = {
+  const base = {
     ...player,
+    board: player.board.map((row) => [...row]),
+    hidden: normalizeHidden(player.hidden),
     fallElapsedMs: player.fallElapsedMs ?? 0,
     lockElapsedMs: player.lockElapsedMs ?? 0,
     quickTurnArmed: player.quickTurnArmed ?? false,
   }
-  if (!normalized.turnStart) normalized.turnStart = snapshotTurnState(normalized)
-  if (!normalized.undoStack) normalized.undoStack = []
-  if (!normalized.redoStack) normalized.redoStack = []
-  return normalized
+
+  const turnStart = player.turnStart
+    ? normalizeTurnState(player.turnStart, base)
+    : snapshotTurnState(base)
+
+  const undoStack = (player.undoStack ?? []).map((state) => normalizeTurnState(state, base))
+  const redoStack = (player.redoStack ?? []).map((entry) => ({
+    ...entry,
+    state: normalizeTurnState(entry.state, base),
+    turnStart: normalizeTurnState(entry.turnStart, base),
+    undoStack: (entry.undoStack ?? []).map((state) => normalizeTurnState(state, base)),
+  }))
+
+  return {
+    ...base,
+    turnStart,
+    undoStack,
+    redoStack,
+  }
 }
 
 export function cloneGameState(game: GameState): GameState {
