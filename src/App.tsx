@@ -22,9 +22,21 @@ type TurnCopyBackup = {
   replay: ReplayState
   elapsedMs: number
 }
+type TimelineSeekDetail = {
+  mode: 'time' | 'cursor'
+  value: number
+}
 
 const COLOR_MAP: Record<PuyoColor, string> = { 1: '#ff5b68', 2: '#5aa7ff', 3: '#58d68d', 4: '#b66cff' }
 const COLOR_NAMES: Record<PuyoColor, string> = { 1: '赤', 2: '青', 3: '緑', 4: '紫' }
+
+function seekTime(elapsedMs: number): void {
+  window.dispatchEvent(new CustomEvent<TimelineSeekDetail>('puyo-timeline-seek', { detail: { mode: 'time', value: elapsedMs } }))
+}
+
+function seek(cursor: number): void {
+  window.dispatchEvent(new CustomEvent<TimelineSeekDetail>('puyo-timeline-seek', { detail: { mode: 'cursor', value: cursor } }))
+}
 
 function cloneReplayState(replay: ReplayState): ReplayState {
   return {
@@ -118,6 +130,31 @@ export default function App() {
     setLiveElapsedMs(elapsedMsRef.current)
   }, [])
 
+  useEffect(() => {
+    const onTimelineSeek = (event: Event) => {
+      const detail = (event as CustomEvent<TimelineSeekDetail>).detail
+      if (!detail || (detail.mode !== 'time' && detail.mode !== 'cursor')) return
+
+      const currentReplay = replayRef.current
+      if (currentReplay.frames.length < 2) return
+
+      const cursor = detail.mode === 'time'
+        ? findFrameAtElapsed(currentReplay.frames, detail.value)
+        : Math.max(0, Math.min(currentReplay.frames.length - 1, Math.round(detail.value)))
+      const frame = currentReplay.frames[cursor]
+      if (!frame) return
+
+      resetClock(frame.elapsedMs)
+      const nextGame = frameToGame(frame, false)
+      gameRef.current = nextGame
+      setGame(nextGame)
+      setReplay(state => ({ ...state, cursor, playing: false }))
+    }
+
+    window.addEventListener('puyo-timeline-seek', onTimelineSeek)
+    return () => window.removeEventListener('puyo-timeline-seek', onTimelineSeek)
+  }, [resetClock])
+
   const refreshSnapshots = useCallback(async () => {
     try { setSnapshots(await listSnapshots()) } catch { setMessage('局面ライブラリを読み込めませんでした') }
   }, [])
@@ -158,8 +195,6 @@ export default function App() {
     players[playerIndex] = nextPlayer
     const nextGame = { ...current, players, activePlayer: playerIndex, tick: current.tick + 1 }
 
-    // Keep the ref in sync immediately so rapid consecutive shortcuts
-    // (Z → Z → Y, etc.) always operate on the latest history state.
     gameRef.current = nextGame
     setGame(nextGame)
     setReplay(state => appendFrame(state, nextGame, elapsedMs))
