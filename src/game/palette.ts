@@ -1,6 +1,5 @@
-import type { PuyoColor } from './types'
-
-export type ActivePalette = [PuyoColor, PuyoColor, PuyoColor, PuyoColor]
+export type PaletteColor = 1 | 2 | 3 | 4 | 5
+export type ActivePalette = [PaletteColor, PaletteColor, PaletteColor, PaletteColor]
 
 export const PALETTE_OPTIONS: ActivePalette[] = [
   [1, 2, 3, 4],
@@ -10,22 +9,19 @@ export const PALETTE_OPTIONS: ActivePalette[] = [
   [2, 3, 4, 5],
 ]
 
-export const PALETTE_COLOR_NAMES: Record<PuyoColor, string> = {
+export const PALETTE_COLOR_NAMES: Record<PaletteColor, string> = {
   1: '赤',
   2: '青',
   3: '緑',
   4: '紫',
   5: '黄',
-  0: '空',
 }
 
 const STORAGE_KEY = 'puyo-trainer-active-palette-v1'
-const ALL_COLORS = new Set<PuyoColor>([1, 2, 3, 4, 5])
 
 function isPalette(value: unknown): value is ActivePalette {
   if (!Array.isArray(value) || value.length !== 4) return false
-  const values = value as unknown[]
-  return values.every((color) => typeof color === 'number' && ALL_COLORS.has(color as PuyoColor)) && new Set(values).size === 4
+  return value.every((color): color is PaletteColor => color === 1 || color === 2 || color === 3 || color === 4 || color === 5) && new Set(value).size === 4
 }
 
 export function loadActivePalette(): ActivePalette {
