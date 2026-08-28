@@ -3,7 +3,7 @@ let audioContext: AudioContext | null = null
 const MOVE_SOUND_URL = '/sounds/cursor-move-4.mp3'
 const ROTATE_SOUND_URL = '/sounds/cancel-1.mp3'
 const VOLUME_STORAGE_KEY = 'puyo-trainer-master-volume'
-const DEFAULT_MASTER_VOLUME = 0.75
+const DEFAULT_MASTER_VOLUME = 1
 
 function clampVolume(value: number): number {
   return Math.min(1, Math.max(0, Number.isFinite(value) ? value : DEFAULT_MASTER_VOLUME))
