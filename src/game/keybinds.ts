@@ -32,10 +32,18 @@ export function loadKeybinds(): Keybinds {
     const raw = window.localStorage.getItem(STORAGE_KEY)
     if (!raw) return structuredKeybinds(DEFAULT_KEYBINDS)
     const parsed = JSON.parse(raw) as Partial<Record<GameplayAction, unknown>>
-    return ACTIONS.reduce((result, action) => {
-      result[action] = normalizeSlots(parsed[action], DEFAULT_KEYBINDS[action])
-      return result
+    const result = ACTIONS.reduce((next, action) => {
+      next[action] = normalizeSlots(parsed[action], DEFAULT_KEYBINDS[action])
+      return next
     }, {} as Keybinds)
+
+    // Migrate the previous history binding where Y meant undo.
+    const hadLegacyUndoY = !parsed.redo && (result.undo[0] === 'KeyY' || result.undo[1] === 'KeyY')
+    if (hadLegacyUndoY) {
+      result.undo = [...DEFAULT_KEYBINDS.undo] as KeybindSlots
+      result.redo = [...DEFAULT_KEYBINDS.redo] as KeybindSlots
+    }
+    return result
   } catch {
     return structuredKeybinds(DEFAULT_KEYBINDS)
   }
