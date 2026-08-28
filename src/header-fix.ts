@@ -1,30 +1,33 @@
 const SETTINGS_SELECTOR = '.settings-button'
 
-function normalizeSettingsButtons(): void {
-  const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>(SETTINGS_SELECTOR))
-  if (buttons.length === 0) return
+function normalizeSettingsButton(): void {
+  const button = document.querySelector<HTMLButtonElement>(SETTINGS_SELECTOR)
+  const snapshotPanel = document.querySelector<HTMLElement>('.snapshot-panel')
+  if (!button || !snapshotPanel) return
 
-  const keep = buttons[buttons.length - 1]
-  buttons.slice(0, -1).forEach((button) => button.remove())
+  // Reactが管理するボタンを一度だけSNAPSHOTパネルへ移動する。
+  // MutationObserverは使用しない。React更新との無限ループを防ぐため。
+  if (button.parentElement !== snapshotPanel) {
+    snapshotPanel.appendChild(button)
+  }
 
-  keep.textContent = '🔖'
-  keep.dataset.settingsIconReady = '1'
-  keep.title = 'キーバインド設定'
-  keep.setAttribute('aria-label', 'キーバインド設定')
-  keep.style.width = '38px'
-  keep.style.height = '38px'
-  keep.style.padding = '0'
-  keep.style.display = 'inline-grid'
-  keep.style.placeItems = 'center'
+  button.textContent = '🔖'
+  button.dataset.settingsIconReady = '1'
+  button.title = 'キーバインド設定'
+  button.setAttribute('aria-label', 'キーバインド設定')
+  button.style.width = '38px'
+  button.style.height = '38px'
+  button.style.padding = '0'
+  button.style.display = 'inline-grid'
+  button.style.placeItems = 'center'
+  button.style.flex = '0 0 38px'
 }
 
-// React のDOM更新を監視し続ける必要はない。
-// MutationObserverを使うと、Reactの更新とDOM修正が相互に発火して
-// 起動時に無限ループするため、起動後に一度だけ正規化する。
+// Reactの初期描画が完了してから一度だけ配置を整える。
 function install(): void {
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
-      normalizeSettingsButtons()
+      normalizeSettingsButton()
     })
   })
 }
