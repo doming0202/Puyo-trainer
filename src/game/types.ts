@@ -35,7 +35,7 @@ export interface FallingCell {
 }
 
 export interface ResolutionState {
-  stage: 'gravity' | 'clear'
+  stage: 'gravity' | 'fall' | 'clear'
   pendingGroups: GroupCell[][]
   fallingCells?: FallingCell[]
 }
