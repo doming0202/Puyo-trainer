@@ -115,7 +115,7 @@ function startResumeCountdown(resumeEvent: typeof pendingResumeEvent = null): vo
       hideOverlay()
 
       syntheticResume = true
-      window.dispatchEvent(new KeyboardEvent('keydown', {
+      document.body.dispatchEvent(new KeyboardEvent('keydown', {
         key: 'f',
         code: 'KeyF',
         bubbles: true,
@@ -127,7 +127,7 @@ function startResumeCountdown(resumeEvent: typeof pendingResumeEvent = null): vo
       pendingResumeEvent = null
       if (eventToResume) {
         window.setTimeout(() => {
-          window.dispatchEvent(new KeyboardEvent('keydown', {
+          document.body.dispatchEvent(new KeyboardEvent('keydown', {
             key: eventToResume.key,
             code: eventToResume.code,
             ctrlKey: eventToResume.ctrlKey,
@@ -195,7 +195,7 @@ function install(): void {
       // Re-dispatch the original event after the capture handler so App.tsx
       // performs its existing running=true/false toggle exactly once.
       syntheticResume = true
-      window.dispatchEvent(new KeyboardEvent('keydown', {
+      document.body.dispatchEvent(new KeyboardEvent('keydown', {
         key: event.key,
         code: event.code,
         bubbles: true,
