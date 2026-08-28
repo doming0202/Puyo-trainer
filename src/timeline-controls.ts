@@ -1,6 +1,7 @@
 const CONTROL_ID = 'puyo-timeline-enhancements'
 const STYLE_ID = 'puyo-timeline-enhancements-style'
 const PINS_STORAGE_KEY = 'puyo-trainer-timeline-pins'
+const HINT_ID = 'puyo-timeline-pin-hint'
 
 let installed = false
 
@@ -91,13 +92,16 @@ function ensureStyle(): void {
     #${CONTROL_ID} .timeline-pin:hover .timeline-pin-label{opacity:1}
     .timeline-wrap.pins-ready{position:relative}
     .timeline-wrap.pins-ready .timeline{position:relative;z-index:1}
+    #${HINT_ID}{
+      margin-left:8px;
+      color:#8994a5;
+    }
   `
   document.head.appendChild(style)
 }
 
 function getTimeline(): HTMLInputElement | null {
-  const timeline = document.querySelector<HTMLInputElement>('.timeline[type="range"]')
-  return timeline
+  return document.querySelector<HTMLInputElement>('.timeline[type="range"]')
 }
 
 function setTimelineValue(timeline: HTMLInputElement, value: number): void {
@@ -162,6 +166,16 @@ function renderPins(wrap: HTMLElement, timeline: HTMLInputElement): void {
   }
 }
 
+function ensureHint(): void {
+  const hint = document.querySelector<HTMLElement>('.replay-hint')
+  if (!hint || document.getElementById(HINT_ID)) return
+
+  const pinHint = document.createElement('span')
+  pinHint.id = HINT_ID
+  pinHint.textContent = 'P: ピン'
+  hint.appendChild(pinHint)
+}
+
 function toggleCurrentPin(timeline: HTMLInputElement): void {
   const current = Number(timeline.value)
   const min = Number(timeline.min) || 0
@@ -189,6 +203,7 @@ function setupTimeline(): boolean {
   if (!timeline || !wrap) return false
 
   ensureStyle()
+  ensureHint()
   wrap.classList.add('pins-ready')
   renderPins(wrap, timeline)
 
@@ -230,6 +245,7 @@ window.addEventListener('keydown', (event) => {
   if (!timeline || timeline.disabled || Number(timeline.max) <= Number(timeline.min)) return
 
   event.preventDefault()
+  event.stopImmediatePropagation()
   toggleCurrentPin(timeline)
 })
 
