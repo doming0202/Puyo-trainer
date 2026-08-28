@@ -126,7 +126,9 @@ export default function App() {
 
   const focusPlayer = useCallback((index: 0 | 1) => {
     setFocusedPlayer(index)
-    setGame(current => ({ ...current, activePlayer: index }))
+    const nextGame = { ...gameRef.current, activePlayer: index }
+    gameRef.current = nextGame
+    setGame(nextGame)
   }, [])
 
   const editPlayerState = (fn: (player: PlayerState) => PlayerState) => setGame(current => {
@@ -139,22 +141,28 @@ export default function App() {
   const setEditedPair = (pair: PairEdit) => editPlayerState(player => setPairColors(player, pair.axis, pair.child))
 
   const dispatch = useCallback((action: GameplayAction) => {
-    setGame(current => {
-      const playerIndex = focusedPlayer
-      const player = current.players[playerIndex]
-      const historyAction = action === 'reset-turn' || action === 'undo' || action === 'redo'
-      if (editMode || replayRef.current.playing || player.controlMode !== 'human') return current
-      if (!historyAction && (!player.alive || !current.running)) return current
+    const current = gameRef.current
+    const playerIndex = focusedPlayer
+    const player = current.players[playerIndex]
+    const historyAction = action === 'reset-turn' || action === 'undo' || action === 'redo'
 
-      const elapsedMs = syncElapsed(current.running)
-      const players = [...current.players] as [PlayerState, PlayerState]
-      const nextPlayer = updatePlayer(player, action)
-      if (nextPlayer === player) return current
-      players[playerIndex] = nextPlayer
-      const nextGame = { ...current, players, activePlayer: playerIndex, tick: current.tick + 1 }
-      setReplay(state => appendFrame(state, nextGame, elapsedMs))
-      return nextGame
-    })
+    if (editMode || replayRef.current.playing) return
+    if (!historyAction && (player.controlMode !== 'human' || !player.alive || !current.running)) return
+    if (historyAction && player.controlMode === 'replay') return
+
+    const elapsedMs = syncElapsed(current.running)
+    const nextPlayer = updatePlayer(player, action)
+    if (nextPlayer === player) return
+
+    const players = [...current.players] as [PlayerState, PlayerState]
+    players[playerIndex] = nextPlayer
+    const nextGame = { ...current, players, activePlayer: playerIndex, tick: current.tick + 1 }
+
+    // Keep the ref in sync immediately so rapid consecutive shortcuts
+    // (Z → Z → Y, etc.) always operate on the latest history state.
+    gameRef.current = nextGame
+    setGame(nextGame)
+    setReplay(state => appendFrame(state, nextGame, elapsedMs))
   }, [editMode, focusedPlayer, syncElapsed])
 
   const actionForKey = useCallback((event: KeyboardEvent): GameplayAction | null => {
@@ -218,11 +226,14 @@ export default function App() {
             const elapsedMs = frame?.elapsedMs ?? 0
             setReplay(state => ({ ...state, playing: false }))
             resetClock(elapsedMs)
-            setGame({ ...frameToGame(frame ?? currentReplay.frames[0], false), running: true })
+            const nextGame = { ...frameToGame(frame ?? currentReplay.frames[0], false), running: true }
+            gameRef.current = nextGame
+            setGame(nextGame)
             return
           }
           const elapsedMs = syncElapsed(current.running)
           const nextGame = { ...current, running: !current.running }
+          gameRef.current = nextGame
           setGame(nextGame)
           setReplay(state => appendFrame(state, nextGame, elapsedMs))
           setLiveElapsedMs(elapsedMs)
@@ -254,6 +265,7 @@ export default function App() {
       })
       if (!changed) return current
       const nextGame = { ...current, players, tick: current.tick + 1 }
+      gameRef.current = nextGame
       setReplay(state => appendFrame(state, nextGame, elapsedMs))
       return nextGame
     }), 50)
@@ -267,6 +279,7 @@ export default function App() {
       const players = [...current.players] as [PlayerState, PlayerState]
       players.forEach((player, index) => { if (player.resolution) players[index] = advanceResolution(player) })
       const nextGame = { ...current, players, tick: current.tick + 1 }
+      gameRef.current = nextGame
       setReplay(state => appendFrame(state, nextGame, elapsedMs))
       return nextGame
     }), 420)
@@ -284,7 +297,9 @@ export default function App() {
       const cursor = findFrameAtElapsed(currentReplay.frames, targetElapsed)
       const frame = currentReplay.frames[cursor]
       resetClock(frame.elapsedMs)
-      setGame(frameToGame(frame, false))
+      const nextGame = { ...frameToGame(frame, false) }
+      gameRef.current = nextGame
+      setGame(nextGame)
       setReplay(state => ({ ...state, cursor, playing: cursor < state.frames.length - 1 }))
     }, 40)
     return () => window.clearInterval(timer)
@@ -301,11 +316,15 @@ export default function App() {
     if (currentReplay.cursor >= currentReplay.frames.length - 1) {
       const first = currentReplay.frames[0]
       resetClock(first.elapsedMs)
-      setGame(frameToGame(first, false))
+      const nextGame = frameToGame(first, false)
+      gameRef.current = nextGame
+      setGame(nextGame)
       setReplay(state => ({ ...state, cursor: 0, playing: true }))
       return
     }
-    setGame(current => ({ ...current, running: false }))
+    const stoppedGame = { ...gameRef.current, running: false }
+    gameRef.current = stoppedGame
+    setGame(stoppedGame)
     setReplay(state => ({ ...state, playing: true }))
   }
 
@@ -316,11 +335,12 @@ export default function App() {
     players[index] = { ...players[index], controlMode: mode }
     const nextReplaySelected = players.some(player => player.controlMode === 'replay')
     const nextGame = { ...current, players, running: nextReplaySelected ? false : true }
+    gameRef.current = nextGame
     setGame(nextGame)
     setReplay(state => appendFrame(state, nextGame, elapsedMs))
   }
 
-  const reset = () => { const next = createGame(); setGame(next); setReplay(createReplay(next)); setMessage(''); setEditMode(false); setTurnCopyBackup(null); focusPlayer(0); resetClock(0) }
+  const reset = () => { const next = createGame(); gameRef.current = next; setGame(next); setReplay(createReplay(next)); setMessage(''); setEditMode(false); setTurnCopyBackup(null); focusPlayer(0); resetClock(0) }
 
   const copyOpponentScreen = () => {
     const current = gameRef.current
@@ -349,6 +369,7 @@ export default function App() {
       quickTurnArmed: false,
     }
     const nextGame = { ...current, players, activePlayer: targetIndex }
+    gameRef.current = nextGame
     setGame(nextGame)
     setReplay(state => appendFrame(state, nextGame, elapsedMs))
     setMessage(`Player ${sourceIndex === 0 ? 'A' : 'B'} の画面を Player ${targetIndex === 0 ? 'A' : 'B'} に再現しました`)
@@ -356,7 +377,9 @@ export default function App() {
 
   const restoreTurnCopy = () => {
     if (!turnCopyBackup) return
-    setGame(cloneGameState(turnCopyBackup.game))
+    const restoredGame = cloneGameState(turnCopyBackup.game)
+    gameRef.current = restoredGame
+    setGame(restoredGame)
     setReplay(cloneReplayState(turnCopyBackup.replay))
     setFocusedPlayer(turnCopyBackup.game.activePlayer)
     resetClock(turnCopyBackup.elapsedMs)
@@ -372,7 +395,7 @@ export default function App() {
   const editableControls: EditControls = { changeCurrentColor, rotateCurrent, changeNext, changeGarbage, setGarbageValue }
 
   const saveCurrentSnapshot = async () => { try { await saveSnapshot(makeSnapshot(game,snapshotTitle,snapshotTags.split(',').map(tag=>tag.trim()))); setSnapshotTitle(''); setSnapshotTags(''); setMessage('局面を保存しました'); await refreshSnapshots(); setLibraryOpen(true) } catch { setMessage('局面の保存に失敗しました') } }
-  const loadSnapshot = (snapshot:Snapshot) => { const restored = cloneGameState(snapshot.state); setGame(restored); setReplay(createReplay(restored)); setLibraryOpen(false); setEditMode(false); setTurnCopyBackup(null); setMessage(`「${snapshot.title}」を読み込みました`); resetClock(0); setFocusedPlayer(restored.activePlayer) }
+  const loadSnapshot = (snapshot:Snapshot) => { const restored = cloneGameState(snapshot.state); gameRef.current = restored; setGame(restored); setReplay(createReplay(restored)); setLibraryOpen(false); setEditMode(false); setTurnCopyBackup(null); setMessage(`「${snapshot.title}」を読み込みました`); resetClock(0); setFocusedPlayer(restored.activePlayer) }
   const removeSnapshot = async (id:string) => { try { await deleteSnapshot(id); await refreshSnapshots(); setMessage('局面を削除しました') } catch { setMessage('局面の削除に失敗しました') } }
 
   const activeFrame = replay.frames[replay.cursor]
@@ -394,4 +417,4 @@ export default function App() {
   <section className="controls"><div><strong>フォーカス中のPlayer</strong>　左 / 右 / 回転 / 落下 / ハードドロップを共通キーバインドで操作</div><div><strong>Ctrl+1</strong> Player A　<strong>Ctrl+2</strong> Player B　・　盤面クリックでも切替</div><div><strong>F</strong> ゲーム再開 / 停止　<strong>C</strong> 編集モード切替　<strong>⚙️</strong> キーバインド設定</div><div><strong>相手の画面を再現</strong>　フォーカス中Playerに相手側の盤面・NEXT・おじゃま・スコア・COMBO・現在の組ぷよを再現 · <strong>再現前に戻す</strong> で操作前へ復元</div></section><footer>独自ゲームエンジン · 公式素材・データ不使用 · Phase 4 Position Editor</footer>{keybindModalOpen && <KeybindModal keybinds={keybinds} onChange={setKeybinds} onClose={()=>setKeybindModalOpen(false)} />}</main>
 }
 
-function PlayerPanel({ title, player, focused, onFocus, onMode, nextVisible, editMode, onBoardChange, onPairEdit, editableControls }: { title:string; player:PlayerState; focused:boolean; onFocus:()=>void; onMode:(mode:PlayerState['controlMode'])=>void; nextVisible:number; editMode:boolean; onBoardChange:(board:Board)=>void; onPairEdit:(pair:PairEdit)=>void; editableControls:EditControls }) { return <article className="player-card" onMouseDown={onFocus} style={focused ? { borderColor:'#6b829c', boxShadow:'0 18px 50px rgba(0,0,0,.18), 0 0 0 1px rgba(143,215,255,.28)' } : undefined}><div className="player-header"><div><span className="player-label">PLAYER</span><h2>{title}</h2></div><div style={{display:'flex',alignItems:'center',gap:'6px'}}><span className="mode" style={focused ? { border:'1px solid #5f86a7', color:'#8fd7ff' } : undefined}>{player.alive?player.controlMode:'game-over'}</span>{focused&&<span className="aside-label" style={{color:'#8fd7ff'}}>FOCUS</span>}</div></div><div className="game-row"><BoardView player={player} editMode={editMode} focused={focused} onFocus={onFocus} onBoardChange={onBoardChange} onPairEdit={onPairEdit}/><aside><div className="aside-label">NEXT</div><NextView player={{...player,next:player.next.slice(0,nextVisible)}} editable={editMode} onPair={editableControls.changeNext}/><div className="aside-label garbage-label">GARBAGE</div><div className="garbage">{player.garbage}</div><div className="combo-display"><div className="aside-label combo-label">COMBO</div><strong>{player.chain}</strong></div></aside></div>{editMode&&<div className="direct-edit-bar"><div className="current-pair"><button style={{background:COLOR_MAP[player.current.pair.axis]}} onMouseDown={e=>e.stopPropagation()} onClick={()=>editableControls.changeCurrentColor('axis')}>{COLOR_NAMES[player.current.pair.axis]}</button><button style={{background:COLOR_MAP[player.current.pair.child]}} onMouseDown={e=>e.stopPropagation()} onClick={()=>editableControls.changeCurrentColor('child')}>{COLOR_NAMES[player.current.pair.child]}</button><button onMouseDown={e=>e.stopPropagation()} onClick={()=>editableControls.rotateCurrent(-1)}>↶</button><button onMouseDown={e=>e.stopPropagation()} onClick={()=>editableControls.rotateCurrent(1)}>↷</button></div><div className="garbage-editor"><button onMouseDown={e=>e.stopPropagation()} onClick={()=>editableControls.changeGarbage(-1)}>−</button><input type="number" min="0" value={player.garbage} onMouseDown={e=>e.stopPropagation()} onChange={e=>editableControls.setGarbageValue(e.target.value)}/><button onMouseDown={e=>e.stopPropagation()} onClick={()=>editableControls.changeGarbage(1)}>＋</button></div></div>}<div className="mode-buttons">{(['human','fixed','replay','none'] as const).map(mode=><button className={player.controlMode===mode?'selected':''} key={mode} onMouseDown={e=>e.stopPropagation()} onClick={()=>onMode(mode)}>{mode}</button>)}</div></article> }
+function PlayerPanel({ title, player, focused, onFocus, onMode, nextVisible, editMode, onBoardChange, onPairEdit, editableControls }: { title:string; player:PlayerState; focused:boolean; onFocus:()=>void; onMode:(mode:PlayerState['controlMode'])=>void; nextVisible:number; editMode:boolean; onBoardChange:(board:Board)=>void; onPairEdit:(pair:PairEdit)=>void; editableControls:EditControls }) { return <article className="player-card" onMouseDown={onFocus} style={focused ? { borderColor:'#6b829c', boxShadow:'0 18px 50px rgba(0,0,0,.18), 0 0 0 1px rgba(143,215,255,.28)' } : undefined}><div className="player-header"><div><span className="player-label">PLAYER</span><h2>{title}</h2></div><div style={{display:'flex',alignItems:'center',gap:'6px'}}><span className="mode" style={focused ? { border:'1px solid #5f86a7', color:'#8fd7ff' } : undefined}>{player.alive?player.controlMode:'game-over'}</span>{focused&&<span className="aside-label" style={{color:'#8fd7ff'}}>FOCUS</span>}</div></div><div className="game-row"><BoardView player={player} editMode={editMode} focused={focused} onFocus={onFocus} onBoardChange={onBoardChange} onPairEdit={onPairEdit}/><aside><div className="aside-label">NEXT</div><NextView player={{...player,next:player.next.slice(0,nextVisible)}} editable={editMode} onPair={editableControls.changeNext}/><div className="aside-label garbage-label">GARBAGE</div><div className="garbage">{player.garbage}</div><div className="combo-display"><div className="aside-label combo-label">COMBO</div><strong>{player.chain}</strong></div></aside></div>{editMode&&<div className="direct-edit-bar"><div className="current-pair"><button style={{background:COLOR_MAP[player.current.pair.axis]}} onMouseDown={e=>e.stopPropagation()} onClick={()=>editableControls.changeCurrentColor('axis')}>{COLOR_NAMES[player.current.pair.axis]}</button><button style={{background:COLOR_MAP[player.current.pair.child]}} onMouseDown={e=>e.stopPropagation()} onClick={()=>editableControls.changeCurrentColor('child')}>{COLOR_NAMES[player.current.pair.child]}</button><button onMouseDown={e=>e.stopPropagation()} onClick={()=>editableControls.rotateCurrent(-1)}>↶</button><button onMouseDown={e=>e.stopPropagation()} onClick={()=>editableControls.rotateCurrent(1)}>↷</button></div><div className="garbage-editor"><button onClick={()=>editableControls.changeGarbage(-1)}>−</button><input type="number" min="0" value={player.garbage} onMouseDown={e=>e.stopPropagation()} onChange={e=>editableControls.setGarbageValue(e.target.value)}/><button onMouseDown={e=>e.stopPropagation()} onClick={()=>editableControls.changeGarbage(1)}>＋</button></div></div>}<div className="mode-buttons">{(['human','fixed','replay','none'] as const).map(mode=><button className={player.controlMode===mode?'selected':''} key={mode} onMouseDown={e=>e.stopPropagation()} onClick={()=>onMode(mode)}>{mode}</button>)}</div></article> }
