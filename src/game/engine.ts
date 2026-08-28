@@ -1,4 +1,5 @@
 import { playComboSound } from './sound'
+import { recordTurnAction, resetToTurnStart, startNewTurn, undoTurnAction } from './history'
 import { COLS, ROWS, type ActivePair, type Board, type FallingCell, type GameState, type Pair, type PlayerState, type PuyoColor, type Rotation } from './types'
 
 export const COLORS: PuyoColor[] = [1, 2, 3, 4]
@@ -16,7 +17,7 @@ function randomColor(): PuyoColor { return COLORS[Math.floor(Math.random() * COL
 
 export function createPlayer(controlMode: PlayerState['controlMode'] = 'human'): PlayerState {
   const first = randomPair()
-  return {
+  const base: Omit<PlayerState, 'turnStart' | 'undoStack'> = {
     board: emptyBoard(),
     current: spawnPair(first),
     next: [randomPair(), randomPair(), randomPair(), randomPair()],
@@ -29,6 +30,8 @@ export function createPlayer(controlMode: PlayerState['controlMode'] = 'human'):
     lockElapsedMs: 0,
     quickTurnArmed: false,
   }
+  const player = { ...base, turnStart: structuredClone(base), undoStack: [] }
+  return player
 }
 export function createGame(): GameState { return { players: [createPlayer('human'), createPlayer('fixed')], activePlayer: 0, running: true, tick: 0 } }
 export function spawnPair(pair: Pair): ActivePair { return { pair, x: 2, y: 1, rotation: 0 } }
@@ -186,7 +189,7 @@ function finishPlacement(player: PlayerState): PlayerState {
   const next = [...player.next.slice(1), randomPair()]
   const nextCurrent = spawnPair(nextPair)
   if (!canPlace(player.board, nextCurrent)) return { ...player, alive: false, resolution: undefined, fallElapsedMs: 0, lockElapsedMs: 0, quickTurnArmed: false }
-  return { ...player, current: nextCurrent, next, resolution: undefined, fallElapsedMs: 0, lockElapsedMs: 0, quickTurnArmed: false }
+  return startNewTurn({ ...player, current: nextCurrent, next, resolution: undefined, fallElapsedMs: 0, lockElapsedMs: 0, quickTurnArmed: false })
 }
 
 function findGroups(board: Board): Array<Array<{ x: number; y: number }>> {
@@ -215,13 +218,21 @@ function findGroups(board: Board): Array<Array<{ x: number; y: number }>> {
   return groups
 }
 
-export function updatePlayer(player: PlayerState, action: 'left' | 'right' | 'rotate-left' | 'rotate-right' | 'soft-drop' | 'hard-drop'): PlayerState {
+export type GameplayAction = 'left' | 'right' | 'rotate-left' | 'rotate-right' | 'soft-drop' | 'hard-drop' | 'reset-turn' | 'undo'
+
+export function updatePlayer(player: PlayerState, action: GameplayAction): PlayerState {
+  if (action === 'reset-turn') return resetToTurnStart(player)
+  if (action === 'undo') return undoTurnAction(player)
+
+  let next: PlayerState
   switch (action) {
-    case 'left': return movePair(player, -1)
-    case 'right': return movePair(player, 1)
-    case 'rotate-left': return rotatePair(player, -1)
-    case 'rotate-right': return rotatePair(player, 1)
-    case 'soft-drop': return stepDown(player)
-    case 'hard-drop': return hardDrop(player)
+    case 'left': next = movePair(player, -1); break
+    case 'right': next = movePair(player, 1); break
+    case 'rotate-left': next = rotatePair(player, -1); break
+    case 'rotate-right': next = rotatePair(player, 1); break
+    case 'soft-drop': next = stepDown(player); break
+    case 'hard-drop': next = hardDrop(player); break
   }
+
+  return recordTurnAction(player, next)
 }
