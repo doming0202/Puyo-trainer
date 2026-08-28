@@ -12,6 +12,21 @@ export interface ReplayState {
   cursor: number
   playing: boolean
   speed: number
+  /** Original timeline kept intact after the first divergent edit. */
+  originalFrames?: ReplayFrame[]
+  /** Elapsed time where the active branch first diverged from Original. */
+  branchOriginElapsedMs?: number
+}
+
+export interface TimelineBranchInfo {
+  forkElapsedMs: number
+  originalDurationMs: number
+}
+
+declare global {
+  interface Window {
+    __puyoTimelineBranch?: TimelineBranchInfo
+  }
 }
 
 export const REPLAY_SPEEDS = [0.25, 0.5, 1, 2, 4] as const
@@ -58,6 +73,19 @@ export function clonePlayer(player: PlayerState): PlayerState {
   }
 }
 
+function cloneFrames(frames: ReplayFrame[]): ReplayFrame[] {
+  return frames.map((frame) => ({
+    ...frame,
+    players: [clonePlayer(frame.players[0]), clonePlayer(frame.players[1])],
+  } as ReplayFrame))
+}
+
+function publishBranchInfo(info: TimelineBranchInfo): void {
+  if (typeof window === 'undefined') return
+  window.__puyoTimelineBranch = info
+  window.dispatchEvent(new CustomEvent<TimelineBranchInfo>('puyo-timeline-branch', { detail: info }))
+}
+
 export function captureFrame(game: GameState, elapsedMs = 0): ReplayFrame {
   return {
     tick: game.tick,
@@ -75,15 +103,40 @@ export function appendFrame(replay: ReplayState, game: GameState, elapsedMs?: nu
   const last = replay.frames[replay.frames.length - 1]
   const nextElapsed = Math.max(last?.elapsedMs ?? 0, elapsedMs ?? last?.elapsedMs ?? 0)
   const frame = captureFrame(game, nextElapsed)
+
   if (last && last.tick === frame.tick) {
     if (nextElapsed <= last.elapsedMs) return replay
     const frames = replay.frames.slice()
     frames[frames.length - 1] = frame
-    return { ...replay, frames }
+    return replay.originalFrames
+      ? { ...replay, frames }
+      : { ...replay, frames }
   }
+
+  const diverging = replay.cursor < replay.frames.length - 1
+  let originalFrames = replay.originalFrames
+  let branchOriginElapsedMs = replay.branchOriginElapsedMs
+
+  // The first edit made after rewinding creates a branch. Keep an immutable
+  // copy of the complete pre-branch timeline before truncating the active one.
+  if (diverging && !originalFrames) {
+    originalFrames = cloneFrames(replay.frames)
+    branchOriginElapsedMs = replay.frames[replay.cursor]?.elapsedMs ?? 0
+    publishBranchInfo({
+      forkElapsedMs: branchOriginElapsedMs,
+      originalDurationMs: originalFrames[originalFrames.length - 1]?.elapsedMs ?? branchOriginElapsedMs,
+    })
+  }
+
   const frames = replay.frames.slice(0, replay.cursor + 1)
   frames.push(frame)
-  return { ...replay, frames, cursor: frames.length - 1 }
+  return {
+    ...replay,
+    frames,
+    cursor: frames.length - 1,
+    originalFrames,
+    branchOriginElapsedMs,
+  }
 }
 
 export function frameToGame(frame: ReplayFrame, running = false): GameState {
