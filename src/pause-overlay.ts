@@ -3,6 +3,7 @@ const STYLE_ID = 'puyo-pause-overlay-style'
 const RESUME_COUNTDOWN_MS = 650
 const TIMELINE_SEEK_EVENT = 'puyo-timeline-seek-complete'
 const TIMELINE_RESUME_REQUEST_EVENT = 'puyo-timeline-resume-request'
+const TIMELINE_RESUME_CANCEL_EVENT = 'puyo-timeline-resume-cancel'
 
 let manuallyPaused = false
 let timelineAwaitingInput = false
@@ -131,7 +132,7 @@ function resetPauseState(): void {
   }
   countingDown = false
   hideOverlay()
-  window.dispatchEvent(new Event('puyo-timeline-resume-cancel'))
+  window.dispatchEvent(new Event(TIMELINE_RESUME_CANCEL_EVENT))
 }
 
 function install(): void {
@@ -160,8 +161,11 @@ function install(): void {
     event.stopImmediatePropagation()
 
     if (timelineAwaitingInput) {
-      // A timeline seek is already paused. Keep F from toggling that pause;
-      // normal gameplay keys are handled by timeline-resume.ts instead.
+      // Timeline seeks are also resumable with F. Clear the gameplay-key
+      // waiting state so a later gameplay key cannot start a second countdown.
+      window.dispatchEvent(new Event(TIMELINE_RESUME_CANCEL_EVENT))
+      timelineAwaitingInput = false
+      startResumeCountdown()
       return
     }
 
