@@ -25,45 +25,21 @@ function ensureOverlay(): HTMLElement {
     style.id = STYLE_ID
     style.textContent = `
       #${OVERLAY_ID}{
-        position:fixed;inset:0;z-index:9999;display:grid;place-items:center;
+        position:fixed;left:50%;top:50%;width:180px;height:110px;
+        transform:translate(-50%,-50%);z-index:9999;
+        display:grid;place-items:center;
         pointer-events:none;opacity:0;visibility:hidden;
-        background:rgba(4,7,12,.44);backdrop-filter:blur(2px);
+        background:transparent;backdrop-filter:none;
         transition:opacity .14s ease,visibility .14s ease;
       }
       #${OVERLAY_ID}.visible{opacity:1;visibility:visible}
       #${OVERLAY_ID} .pause-message{
         min-width:4em;text-align:center;color:#f5f7fb;font-weight:950;
-        font-size:clamp(64px,11vw,132px);line-height:1;letter-spacing:.08em;
-        text-shadow:0 5px 28px rgba(0,0,0,.65),0 0 18px rgba(143,215,255,.18);
+        font-size:clamp(42px,5vw,72px);line-height:1;letter-spacing:.04em;
+        text-shadow:0 4px 20px rgba(0,0,0,.62);
         user-select:none;
       }
       #${OVERLAY_ID} .pause-message.countdown{font-variant-numeric:tabular-nums}
-
-      /* Editing and UI input modes use the side margin for Pause so the
-         board and controls remain unobstructed. */
-      body:has(.direct-editor-overlay) #${OVERLAY_ID},
-      body:has(.keybind-modal-backdrop) #${OVERLAY_ID},
-      body:has(input:focus) #${OVERLAY_ID},
-      body:has(textarea:focus) #${OVERLAY_ID},
-      body:has(select:focus) #${OVERLAY_ID}{
-        inset:auto 18px auto auto;
-        top:50%;
-        width:clamp(150px,16vw,220px);
-        height:110px;
-        transform:translateY(-50%);
-        background:transparent;
-        backdrop-filter:none;
-      }
-      body:has(.direct-editor-overlay) #${OVERLAY_ID} .pause-message,
-      body:has(.keybind-modal-backdrop) #${OVERLAY_ID} .pause-message,
-      body:has(input:focus) #${OVERLAY_ID} .pause-message,
-      body:has(textarea:focus) #${OVERLAY_ID} .pause-message,
-      body:has(select:focus) #${OVERLAY_ID} .pause-message{
-        min-width:0;
-        font-size:clamp(42px,5vw,72px);
-        letter-spacing:.04em;
-        text-shadow:0 4px 20px rgba(0,0,0,.62);
-      }
     `
     document.head.appendChild(style)
   }
