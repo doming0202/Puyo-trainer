@@ -155,6 +155,38 @@ export default function App() {
     return () => window.removeEventListener('puyo-timeline-seek', onTimelineSeek)
   }, [resetClock])
 
+  useEffect(() => {
+    const onReturnOriginal = () => {
+      const currentReplay = replayRef.current
+      const originalFrames = currentReplay.originalFrames
+      if (!originalFrames?.length) return
+
+      const currentElapsed = currentReplay.frames[currentReplay.cursor]?.elapsedMs ?? currentReplay.branchOriginElapsedMs ?? 0
+      const cursor = findFrameAtElapsed(originalFrames, currentElapsed)
+      const frame = originalFrames[cursor]
+      if (!frame) return
+
+      resetClock(frame.elapsedMs)
+      const nextGame = frameToGame(frame, false)
+      gameRef.current = nextGame
+      setGame(nextGame)
+      setReplay(state => ({
+        ...state,
+        frames: originalFrames,
+        cursor,
+        playing: false,
+        originalFrames: undefined,
+        branchOriginElapsedMs: undefined,
+      }))
+
+      window.dispatchEvent(new Event('puyo-timeline-branch-cleared'))
+      window.dispatchEvent(new Event('puyo-timeline-seek-complete'))
+    }
+
+    window.addEventListener('puyo-timeline-return-original', onReturnOriginal)
+    return () => window.removeEventListener('puyo-timeline-return-original', onReturnOriginal)
+  }, [resetClock])
+
   const refreshSnapshots = useCallback(async () => {
     try { setSnapshots(await listSnapshots()) } catch { setMessage('局面ライブラリを読み込めませんでした') }
   }, [])
