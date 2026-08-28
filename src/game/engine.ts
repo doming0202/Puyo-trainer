@@ -1,5 +1,5 @@
 import { playComboSound } from './sound'
-import { COLS, ROWS, type ActivePair, type Board, type GameState, type Pair, type PlayerState, type PuyoColor, type Rotation } from './types'
+import { COLS, ROWS, type ActivePair, type Board, type FallingCell, type GameState, type Pair, type PlayerState, type PuyoColor, type Rotation } from './types'
 
 export const COLORS: PuyoColor[] = [1, 2, 3, 4]
 export const FALL_INTERVAL_MS = 900
@@ -124,20 +124,58 @@ function beginPlacement(player: PlayerState): PlayerState {
   return { ...player, board, resolution: { stage: 'gravity', pendingGroups: [] }, chain: 0, fallElapsedMs: 0, lockElapsedMs: 0, quickTurnArmed: false }
 }
 
+function applyGravityWithOrigins(board: Board): { board: Board; fallingCells: FallingCell[] } {
+  const result = emptyBoard()
+  const fallingCells: FallingCell[] = []
+
+  for (let x = 0; x < COLS; x += 1) {
+    const occupied: Array<{ y: number; color: PuyoColor }> = []
+    for (let y = ROWS - 1; y >= 0; y -= 1) {
+      const cell = board[y][x]
+      if (cell !== null) occupied.push({ y, color: cell })
+    }
+
+    occupied.forEach(({ y: fromY, color }, index) => {
+      const y = ROWS - 1 - index
+      result[y][x] = color
+      if (fromY !== y) fallingCells.push({ x, y, fromY, color })
+    })
+  }
+
+  return { board: result, fallingCells }
+}
+
 export function advanceResolution(player: PlayerState): PlayerState {
   const resolution = player.resolution
   if (!resolution || !player.alive) return player
+
   if (resolution.stage === 'gravity') {
-    const board = applyGravity(player.board)
-    const groups = findGroups(board).filter((group) => group.length >= 4)
-    if (groups.length === 0) return finishPlacement({ ...player, board })
+    const { board, fallingCells } = applyGravityWithOrigins(player.board)
+    return {
+      ...player,
+      board,
+      resolution: {
+        stage: 'fall',
+        pendingGroups: [],
+        fallingCells,
+      },
+    }
+  }
+
+  if (resolution.stage === 'fall') {
+    const groups = findGroups(player.board).filter((group) => group.length >= 4)
+    if (groups.length === 0) return finishPlacement(player)
     const chain = player.chain + 1
     playComboSound(chain)
-    return { ...player, board, chain, resolution: { stage: 'clear', pendingGroups: groups } }
+    return { ...player, chain, resolution: { stage: 'clear', pendingGroups: groups } }
   }
+
   const board = player.board.map((row) => [...row])
   let cleared = 0
-  for (const group of resolution.pendingGroups) { cleared += group.length; for (const { x, y } of group) board[y][x] = null }
+  for (const group of resolution.pendingGroups) {
+    cleared += group.length
+    for (const { x, y } of group) board[y][x] = null
+  }
   const colorBonus = Math.max(0, resolution.pendingGroups.length - 1) * 3
   const score = player.score + cleared * 10 * Math.max(1, player.chain + colorBonus)
   return { ...player, board, score, resolution: { stage: 'gravity', pendingGroups: [] } }
@@ -175,18 +213,6 @@ function findGroups(board: Board): Array<Array<{ x: number; y: number }>> {
     groups.push(group)
   }
   return groups
-}
-
-function applyGravity(board: Board): Board {
-  const result = emptyBoard()
-  for (let x = 0; x < COLS; x += 1) {
-    let write = ROWS - 1
-    for (let y = ROWS - 1; y >= 0; y -= 1) {
-      const cell = board[y][x]
-      if (cell !== null) { result[write][x] = cell; write -= 1 }
-    }
-  }
-  return result
 }
 
 export function updatePlayer(player: PlayerState, action: 'left' | 'right' | 'rotate-left' | 'rotate-right' | 'soft-drop' | 'hard-drop'): PlayerState {
