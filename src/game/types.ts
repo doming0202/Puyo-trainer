@@ -56,10 +56,12 @@ export interface TurnState {
 }
 
 export interface PlayerState extends TurnState {
-  /** State of this player's current falling puyo immediately after it appeared. */
+  /** State immediately after the current falling puyo appeared. */
   turnStart: TurnState
-  /** One entry per manual gameplay operation, newest entry last. */
+  /** States before each manual operation, newest last. */
   undoStack: TurnState[]
+  /** States that can be restored after undoing, newest last. */
+  redoStack: TurnState[]
 }
 
 export interface GameState {
