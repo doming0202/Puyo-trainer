@@ -3,6 +3,7 @@ import type { PlayerState, TurnHistoryEntry, TurnState } from './types'
 export function snapshotTurnState(player: PlayerState): TurnState {
   return {
     board: player.board.map((row) => [...row]),
+    hidden: player.hidden.map((row) => [...row]),
     current: { ...player.current, pair: { ...player.current.pair } },
     next: player.next.map((pair) => ({ ...pair })),
     garbage: player.garbage,
