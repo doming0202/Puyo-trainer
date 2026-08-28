@@ -20,6 +20,7 @@ function cloneTurnState(state: TurnState | undefined, fallback: PlayerState): Tu
   if (!state) {
     return {
       board: fallback.board.map((row) => [...row]),
+      hidden: fallback.hidden.map((row) => [...row]),
       current: { ...fallback.current, pair: { ...fallback.current.pair } },
       next: fallback.next.map((pair) => ({ ...pair })),
       garbage: fallback.garbage,
@@ -45,6 +46,7 @@ export function clonePlayer(player: PlayerState): PlayerState {
   return {
     ...player,
     board: player.board.map((row) => [...row]),
+    hidden: player.hidden.map((row) => [...row]),
     current: { ...player.current, pair: { ...player.current.pair } },
     next: player.next.map((pair) => ({ ...pair })),
     fallElapsedMs: player.fallElapsedMs ?? 0,
