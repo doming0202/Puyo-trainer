@@ -40,7 +40,7 @@ export interface ResolutionState {
   fallingCells?: FallingCell[]
 }
 
-export interface PlayerState {
+export interface TurnState {
   board: Board
   current: ActivePair
   next: Pair[]
@@ -53,6 +53,13 @@ export interface PlayerState {
   fallElapsedMs: number
   lockElapsedMs: number
   quickTurnArmed: boolean
+}
+
+export interface PlayerState extends TurnState {
+  /** State of this player's current falling puyo immediately after it appeared. */
+  turnStart: TurnState
+  /** One entry per manual gameplay operation, newest entry last. */
+  undoStack: TurnState[]
 }
 
 export interface GameState {
