@@ -13,7 +13,7 @@ import './timeline-resume'
 import './timeline-branch'
 
 function sendPauseKey(): void {
-  window.dispatchEvent(new KeyboardEvent('keydown', {
+  document.body.dispatchEvent(new KeyboardEvent('keydown', {
     key: 'f',
     code: 'KeyF',
     bubbles: true,
