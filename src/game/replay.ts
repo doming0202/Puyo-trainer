@@ -33,9 +33,13 @@ function cloneTurnState(state: TurnState | undefined, fallback: PlayerState): Tu
       quickTurnArmed: fallback.quickTurnArmed ?? false,
     }
   }
-  return structuredClone(state)
+  return state
 }
 
+/**
+ * Clone only the gameplay state needed by a replay frame.
+ * Undo/redo history is immutable and shared instead of deep-cloned per frame.
+ */
 export function clonePlayer(player: PlayerState): PlayerState {
   const normalizedTurnStart = cloneTurnState(player.turnStart, player)
   return {
@@ -47,8 +51,8 @@ export function clonePlayer(player: PlayerState): PlayerState {
     lockElapsedMs: player.lockElapsedMs ?? 0,
     quickTurnArmed: player.quickTurnArmed ?? false,
     turnStart: normalizedTurnStart,
-    undoStack: (player.undoStack ?? []).map((entry) => structuredClone(entry)),
-    redoStack: (player.redoStack ?? []).map((entry) => structuredClone(entry)),
+    undoStack: player.undoStack ?? [],
+    redoStack: player.redoStack ?? [],
   }
 }
 
