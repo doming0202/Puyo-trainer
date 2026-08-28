@@ -1,4 +1,4 @@
-import type { GameState, PlayerState } from './types'
+import type { GameState, PlayerState, TurnState } from './types'
 
 export interface ReplayFrame {
   tick: number
@@ -16,7 +16,28 @@ export interface ReplayState {
 
 export const REPLAY_SPEEDS = [0.25, 0.5, 1, 2, 4] as const
 
+function cloneTurnState(state: TurnState | undefined, fallback: PlayerState): TurnState {
+  if (!state) {
+    return {
+      board: fallback.board.map((row) => [...row]),
+      current: { ...fallback.current, pair: { ...fallback.current.pair } },
+      next: fallback.next.map((pair) => ({ ...pair })),
+      garbage: fallback.garbage,
+      score: fallback.score,
+      chain: fallback.chain,
+      controlMode: fallback.controlMode,
+      alive: fallback.alive,
+      resolution: fallback.resolution ? structuredClone(fallback.resolution) : undefined,
+      fallElapsedMs: fallback.fallElapsedMs ?? 0,
+      lockElapsedMs: fallback.lockElapsedMs ?? 0,
+      quickTurnArmed: fallback.quickTurnArmed ?? false,
+    }
+  }
+  return structuredClone(state)
+}
+
 export function clonePlayer(player: PlayerState): PlayerState {
+  const normalizedTurnStart = cloneTurnState(player.turnStart, player)
   return {
     ...player,
     board: player.board.map((row) => [...row]),
@@ -25,6 +46,9 @@ export function clonePlayer(player: PlayerState): PlayerState {
     fallElapsedMs: player.fallElapsedMs ?? 0,
     lockElapsedMs: player.lockElapsedMs ?? 0,
     quickTurnArmed: player.quickTurnArmed ?? false,
+    turnStart: normalizedTurnStart,
+    undoStack: (player.undoStack ?? []).map((entry) => structuredClone(entry)),
+    redoStack: (player.redoStack ?? []).map((entry) => structuredClone(entry)),
   }
 }
 
