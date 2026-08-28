@@ -275,6 +275,25 @@ export default function App() {
     return () => window.clearInterval(timer)
   }, [replay.playing, replay.speed, resetClock])
 
+  const togglePlayback = () => {
+    const currentReplay = replayRef.current
+    if (currentReplay.frames.length < 2) return
+    if (currentReplay.playing) { setReplay(state => ({ ...state, playing: false })); return }
+    const frame = currentReplay.frames[currentReplay.cursor]
+    if (!frame) return
+    syncElapsed(gameRef.current.running)
+    resetClock(frame.elapsedMs)
+    if (currentReplay.cursor >= currentReplay.frames.length - 1) {
+      const first = currentReplay.frames[0]
+      resetClock(first.elapsedMs)
+      setGame(frameToGame(first, false))
+      setReplay(state => ({ ...state, cursor: 0, playing: true }))
+      return
+    }
+    setGame(current => ({ ...current, running: false }))
+    setReplay(state => ({ ...state, playing: true }))
+  }
+
   const setMode = (index: 0 | 1, mode: PlayerState['controlMode']) => {
     const current = gameRef.current
     const elapsedMs = syncElapsed(current.running)
