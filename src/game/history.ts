@@ -29,43 +29,46 @@ export function startNewTurn(player: PlayerState): PlayerState {
 
 export function recordTurnAction(before: PlayerState, after: PlayerState): PlayerState {
   if (before === after) return before
+
   return {
     ...after,
-    turnStart: structuredClone(before.turnStart),
-    undoStack: [...before.undoStack.map((entry) => structuredClone(entry)), snapshotTurnState(before)],
+    turnStart: before.turnStart,
+    undoStack: [...before.undoStack, snapshotTurnState(before)],
     redoStack: [],
   }
 }
 
 export function undoTurnAction(player: PlayerState): PlayerState {
   if (player.undoStack.length === 0) return player
-  const previous = structuredClone(player.undoStack[player.undoStack.length - 1])
+
+  const previous = player.undoStack[player.undoStack.length - 1]
   return {
     ...previous,
     controlMode: player.controlMode,
-    turnStart: structuredClone(player.turnStart),
-    undoStack: player.undoStack.slice(0, -1).map((entry) => structuredClone(entry)),
-    redoStack: [...player.redoStack.map((entry) => structuredClone(entry)), snapshotTurnState(player)],
+    turnStart: player.turnStart,
+    undoStack: player.undoStack.slice(0, -1),
+    redoStack: [...player.redoStack, snapshotTurnState(player)],
   }
 }
 
 export function redoTurnAction(player: PlayerState): PlayerState {
   if (player.redoStack.length === 0) return player
-  const next = structuredClone(player.redoStack[player.redoStack.length - 1])
+
+  const next = player.redoStack[player.redoStack.length - 1]
   return {
     ...next,
     controlMode: player.controlMode,
-    turnStart: structuredClone(player.turnStart),
-    undoStack: [...player.undoStack.map((entry) => structuredClone(entry)), snapshotTurnState(player)],
-    redoStack: player.redoStack.slice(0, -1).map((entry) => structuredClone(entry)),
+    turnStart: player.turnStart,
+    undoStack: [...player.undoStack, snapshotTurnState(player)],
+    redoStack: player.redoStack.slice(0, -1),
   }
 }
 
 export function resetToTurnStart(player: PlayerState): PlayerState {
   return {
-    ...structuredClone(player.turnStart),
+    ...player.turnStart,
     controlMode: player.controlMode,
-    turnStart: structuredClone(player.turnStart),
+    turnStart: player.turnStart,
     undoStack: [],
     redoStack: [],
   }
