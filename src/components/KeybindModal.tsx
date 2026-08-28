@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { GAMEPLAY_ACTION_LABELS, formatKeyCode, resetKeybinds, setKeybind, type GameplayAction, type Keybinds } from '../game/keybinds'
+import { COLOR_PALETTE_OPTIONS, loadColorPalette, PALETTE_COLOR_HEX, PALETTE_COLOR_NAMES, saveColorPalette, type ColorPalette } from '../game/palette'
 import './KeybindModal.css'
 
 const ACTIONS: GameplayAction[] = ['left', 'right', 'rotate-left', 'rotate-right', 'soft-drop', 'hard-drop', 'reset-turn', 'undo', 'redo']
@@ -25,8 +26,13 @@ function isModifierOnly(code: string): boolean {
   return code === 'ShiftLeft' || code === 'ShiftRight' || code === 'ControlLeft' || code === 'ControlRight' || code === 'AltLeft' || code === 'AltRight' || code === 'MetaLeft' || code === 'MetaRight'
 }
 
+function paletteLabel(palette: ColorPalette): string {
+  return palette.map(color => PALETTE_COLOR_NAMES[color]).join('・')
+}
+
 export function KeybindModal({ keybinds, onChange, onClose }: Props) {
   const [listening, setListening] = useState<ListeningTarget>(null)
+  const [palette, setPalette] = useState<ColorPalette>(() => loadColorPalette())
 
   useEffect(() => {
     if (!listening) return
@@ -55,6 +61,11 @@ export function KeybindModal({ keybinds, onChange, onClose }: Props) {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [listening, onClose])
 
+  const selectPalette = (next: ColorPalette) => {
+    setPalette(next)
+    saveColorPalette(next)
+  }
+
   return <div className="keybind-modal-backdrop" role="presentation" onMouseDown={onClose}>
     <section className="keybind-modal" role="dialog" aria-modal="true" aria-labelledby="keybind-title" onMouseDown={event => event.stopPropagation()}>
       <div className="keybind-modal-header">
@@ -67,6 +78,26 @@ export function KeybindModal({ keybinds, onChange, onClose }: Props) {
       </div>
 
       <div className="keybind-focus-help"><strong>フォーカス切替</strong><span>Ctrl + 1 → Player A　・　Ctrl + 2 → Player B</span></div>
+
+      <div className="palette-settings">
+        <div className="palette-settings-header">
+          <div>
+            <strong>使用する4色</strong>
+            <span>5色の中から最初に4色の組み合わせを選択します。</span>
+          </div>
+          <span className="palette-current">現在：{paletteLabel(palette)}</span>
+        </div>
+        <div className="palette-options">
+          {COLOR_PALETTE_OPTIONS.map(option => {
+            const selected = option.every((color, index) => color === palette[index])
+            return <button key={option.join('-')} type="button" className={`palette-option ${selected ? 'selected' : ''}`} onClick={() => selectPalette(option)} aria-pressed={selected}>
+              <div className="palette-dots">{option.map(color => <span key={color} className="palette-dot" style={{ background: PALETTE_COLOR_HEX[color] }} />)}</div>
+              <span className="palette-option-label">{paletteLabel(option)}</span>
+              {selected && <span className="palette-selected-mark">使用中</span>}
+            </button>
+          })}
+        </div>
+      </div>
 
       <div className="keybind-list">
         {ACTIONS.map(action => <div className="keybind-row" key={action}>
