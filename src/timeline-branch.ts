@@ -108,6 +108,11 @@ function render(info: TimelineBranchInfo, timeline: HTMLInputElement, wrap: HTML
   wrap.classList.add('branch-view-ready')
 }
 
+function clear(): void {
+  document.getElementById(TRACK_ID)?.remove()
+  document.querySelectorAll<HTMLElement>('.timeline-wrap.branch-view-ready').forEach((wrap) => wrap.classList.remove('branch-view-ready'))
+}
+
 function mount(): boolean {
   const timeline = getTimeline()
   const wrap = timeline?.closest<HTMLElement>('.timeline-wrap')
@@ -127,6 +132,8 @@ function install(): void {
     const wrap = timeline?.closest<HTMLElement>('.timeline-wrap')
     if (timeline && wrap && info) render(info, timeline, wrap)
   })
+
+  window.addEventListener('puyo-timeline-branch-cleared', clear)
 
   const observer = new MutationObserver(() => {
     if (mount()) observer.disconnect()
