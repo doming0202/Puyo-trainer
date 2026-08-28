@@ -8,11 +8,22 @@ const CONNECTION_OPACITY = '0.82'
 const SVG_NS = 'http://www.w3.org/2000/svg'
 const installedBoards = new WeakSet<HTMLElement>()
 const scheduledBoards = new WeakSet<HTMLElement>()
+const lastColors = new WeakMap<HTMLElement, Array<string | null>>()
 
 function getCellColor(cell: HTMLElement): string | null {
   const puyo = cell.querySelector<HTMLElement>(':scope > .puyo')
   if (!puyo) return null
   return puyo.style.background || getComputedStyle(puyo).backgroundColor || null
+}
+
+function getCells(board: HTMLElement): HTMLElement[] {
+  return Array.from(board.children).filter((child): child is HTMLElement =>
+    child instanceof HTMLElement && child.classList.contains('cell'),
+  )
+}
+
+function readColors(cells: HTMLElement[]): Array<string | null> {
+  return cells.map(getCellColor)
 }
 
 function createLine(x1: number, y1: number, x2: number, y2: number, color: string): SVGLineElement {
@@ -31,16 +42,15 @@ function createLine(x1: number, y1: number, x2: number, y2: number, color: strin
 function rebuildConnections(board: HTMLElement): void {
   scheduledBoards.delete(board)
 
+  const cells = getCells(board)
+  if (cells.length !== COLS * ROWS) return
+
+  const colors = readColors(cells)
+  lastColors.set(board, colors)
+
   const existing = board.querySelector<SVGSVGElement>(':scope > .puyo-connections')
   existing?.remove()
 
-  const cells = Array.from(board.children).filter((child): child is HTMLElement =>
-    child instanceof HTMLElement && child.classList.contains('cell'),
-  )
-
-  if (cells.length !== COLS * ROWS) return
-
-  const colors = cells.map(getCellColor)
   const svg = document.createElementNS(SVG_NS, 'svg')
   svg.classList.add('puyo-connections')
   svg.setAttribute('viewBox', `0 0 ${COLS * CELL_SIZE} ${ROWS * CELL_SIZE}`)
@@ -90,30 +100,61 @@ function scheduleRebuild(board: HTMLElement): void {
   requestAnimationFrame(() => rebuildConnections(board))
 }
 
+function indexOfCell(board: HTMLElement, cell: HTMLElement): number {
+  return Array.prototype.indexOf.call(board.children, cell) - 1
+}
+
 function installBoard(board: HTMLElement): void {
   if (installedBoards.has(board)) {
-    scheduleRebuild(board)
     return
   }
 
   installedBoards.add(board)
+  const cells = getCells(board)
+  lastColors.set(board, readColors(cells))
   board.style.position = 'relative'
   scheduleRebuild(board)
 
   const observer = new MutationObserver((mutations) => {
-    const relevant = mutations.some((mutation) => {
-      if (mutation.target instanceof Element && mutation.target.closest('.puyo-connections')) return false
-      if (mutation.type === 'attributes' && mutation.target instanceof Element && mutation.target.classList.contains('puyo-connections')) return false
+    const colors = lastColors.get(board) ?? []
+    let shouldRebuild = false
+
+    for (const mutation of mutations) {
+      if (!(mutation.target instanceof Element)) continue
+      if (mutation.target.closest('.puyo-connections')) continue
+
       if (mutation.type === 'childList') {
         const changedOverlayOnly = [...mutation.addedNodes, ...mutation.removedNodes].every((node) =>
           node instanceof Element && node.classList.contains('puyo-connections'),
         )
-        if (changedOverlayOnly) return false
+        if (!changedOverlayOnly) {
+          shouldRebuild = true
+          break
+        }
+        continue
       }
-      return true
-    })
 
-    if (relevant) scheduleRebuild(board)
+      if (mutation.type !== 'attributes') continue
+
+      const target = mutation.target as HTMLElement
+      if (target.classList.contains('puyo')) {
+        const cell = target.closest<HTMLElement>('.cell')
+        if (!cell) continue
+        const index = indexOfCell(board, cell)
+        if (index < 0 || getCellColor(cell) !== colors[index]) {
+          shouldRebuild = true
+          break
+        }
+        continue
+      }
+
+      if (mutation.attributeName === 'class' && target.classList.contains('cell')) {
+        shouldRebuild = true
+        break
+      }
+    }
+
+    if (shouldRebuild) scheduleRebuild(board)
   })
 
   observer.observe(board, {
