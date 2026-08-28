@@ -86,6 +86,12 @@ function publishBranchInfo(info: TimelineBranchInfo): void {
   window.dispatchEvent(new CustomEvent<TimelineBranchInfo>('puyo-timeline-branch', { detail: info }))
 }
 
+function clearBranchInfo(): void {
+  if (typeof window === 'undefined') return
+  delete window.__puyoTimelineBranch
+  window.dispatchEvent(new Event('puyo-timeline-branch-cleared'))
+}
+
 export function captureFrame(game: GameState, elapsedMs = 0): ReplayFrame {
   return {
     tick: game.tick,
@@ -96,6 +102,7 @@ export function captureFrame(game: GameState, elapsedMs = 0): ReplayFrame {
 }
 
 export function createReplay(game: GameState): ReplayState {
+  clearBranchInfo()
   return { frames: [captureFrame(game, 0)], cursor: 0, playing: false, speed: 1 }
 }
 
@@ -108,9 +115,7 @@ export function appendFrame(replay: ReplayState, game: GameState, elapsedMs?: nu
     if (nextElapsed <= last.elapsedMs) return replay
     const frames = replay.frames.slice()
     frames[frames.length - 1] = frame
-    return replay.originalFrames
-      ? { ...replay, frames }
-      : { ...replay, frames }
+    return { ...replay, frames }
   }
 
   const diverging = replay.cursor < replay.frames.length - 1
