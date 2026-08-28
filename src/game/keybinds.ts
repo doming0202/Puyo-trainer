@@ -1,30 +1,40 @@
 export type GameplayAction = 'left' | 'right' | 'rotate-left' | 'rotate-right' | 'soft-drop' | 'hard-drop'
 
-export type Keybinds = Record<GameplayAction, string>
+export type KeybindSlots = [string, string]
+export type Keybinds = Record<GameplayAction, KeybindSlots>
 
 export const DEFAULT_KEYBINDS: Keybinds = {
-  left: 'ArrowLeft',
-  right: 'ArrowRight',
-  'rotate-left': 'KeyZ',
-  'rotate-right': 'ArrowUp',
-  'soft-drop': 'ArrowDown',
-  'hard-drop': 'Space',
+  left: ['ArrowLeft', ''],
+  right: ['ArrowRight', ''],
+  'rotate-left': ['KeyZ', ''],
+  'rotate-right': ['ArrowUp', ''],
+  'soft-drop': ['ArrowDown', ''],
+  'hard-drop': ['Space', ''],
 }
 
 const STORAGE_KEY = 'puyo-trainer-keybinds'
+const ACTIONS: GameplayAction[] = ['left', 'right', 'rotate-left', 'rotate-right', 'soft-drop', 'hard-drop']
+
+function normalizeSlots(value: unknown, fallback: KeybindSlots): KeybindSlots {
+  if (Array.isArray(value)) {
+    return [typeof value[0] === 'string' ? value[0] : fallback[0], typeof value[1] === 'string' ? value[1] : fallback[1]]
+  }
+  if (typeof value === 'string') return [value, '']
+  return [...fallback] as KeybindSlots
+}
 
 export function loadKeybinds(): Keybinds {
-  if (typeof window === 'undefined') return { ...DEFAULT_KEYBINDS }
+  if (typeof window === 'undefined') return structuredKeybinds(DEFAULT_KEYBINDS)
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY)
-    if (!raw) return { ...DEFAULT_KEYBINDS }
-    const parsed = JSON.parse(raw) as Partial<Keybinds>
-    return {
-      ...DEFAULT_KEYBINDS,
-      ...parsed,
-    }
+    if (!raw) return structuredKeybinds(DEFAULT_KEYBINDS)
+    const parsed = JSON.parse(raw) as Partial<Record<GameplayAction, unknown>>
+    return ACTIONS.reduce((result, action) => {
+      result[action] = normalizeSlots(parsed[action], DEFAULT_KEYBINDS[action])
+      return result
+    }, {} as Keybinds)
   } catch {
-    return { ...DEFAULT_KEYBINDS }
+    return structuredKeybinds(DEFAULT_KEYBINDS)
   }
 }
 
@@ -36,17 +46,24 @@ export function saveKeybinds(keybinds: Keybinds): void {
   }
 }
 
-export function setKeybind(keybinds: Keybinds, action: GameplayAction, code: string): Keybinds {
-  const next = { ...keybinds }
-  ;(Object.keys(next) as GameplayAction[]).forEach((otherAction) => {
-    if (otherAction !== action && next[otherAction] === code) next[otherAction] = ''
+export function setKeybind(keybinds: Keybinds, action: GameplayAction, slot: 0 | 1, code: string): Keybinds {
+  const next = structuredKeybinds(keybinds)
+  ACTIONS.forEach((otherAction) => {
+    next[otherAction] = next[otherAction].map((value, index) => value === code && !(otherAction === action && index === slot) ? '' : value) as KeybindSlots
   })
-  next[action] = code
+  next[action][slot] = code
   return next
 }
 
+export function structuredKeybinds(keybinds: Keybinds): Keybinds {
+  return ACTIONS.reduce((result, action) => {
+    result[action] = [...keybinds[action]] as KeybindSlots
+    return result
+  }, {} as Keybinds)
+}
+
 export function resetKeybinds(): Keybinds {
-  return { ...DEFAULT_KEYBINDS }
+  return structuredKeybinds(DEFAULT_KEYBINDS)
 }
 
 export const GAMEPLAY_ACTION_LABELS: Record<GameplayAction, string> = {
