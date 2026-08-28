@@ -1,3 +1,4 @@
+import { snapshotTurnState } from './history'
 import type { GameState, PlayerState } from './types'
 
 export interface Snapshot {
@@ -56,18 +57,23 @@ export async function deleteSnapshot(id: string): Promise<void> {
 }
 
 function normalizePlayer(player: PlayerState): PlayerState {
-  return {
+  const normalized = {
     ...player,
     fallElapsedMs: player.fallElapsedMs ?? 0,
     lockElapsedMs: player.lockElapsedMs ?? 0,
     quickTurnArmed: player.quickTurnArmed ?? false,
   }
+  if (!normalized.turnStart) normalized.turnStart = snapshotTurnState(normalized)
+  if (!normalized.undoStack) normalized.undoStack = []
+  if (!normalized.redoStack) normalized.redoStack = []
+  return normalized
 }
 
 export function cloneGameState(game: GameState): GameState {
+  const cloned = structuredClone(game)
   return {
-    ...structuredClone(game),
-    players: [normalizePlayer(structuredClone(game.players[0])), normalizePlayer(structuredClone(game.players[1]))],
+    ...cloned,
+    players: [normalizePlayer(cloned.players[0]), normalizePlayer(cloned.players[1])],
   }
 }
 
