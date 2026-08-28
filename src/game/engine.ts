@@ -1,9 +1,8 @@
 import { playComboSound, playMoveSound, playRotateSound } from './sound'
 import { recordTurnAction, redoTurnAction, resetToTurnStart, startNewTurn, undoTurnAction } from './history'
-import { getActiveColors } from './palette'
 import { COLS, HIDDEN_ROWS, ROWS, TOTAL_ROWS, type ActivePair, type Board, type FallingCell, type GameState, type HiddenBoard, type Pair, type PlayerState, type PuyoColor, type Rotation } from './types'
 
-export const COLORS: PuyoColor[] = [1, 2, 3, 4, 5]
+export const COLORS: PuyoColor[] = [1, 2, 3, 4]
 export const FALL_INTERVAL_MS = 900
 export const LOCK_DELAY_MS = 500
 
@@ -18,7 +17,7 @@ export function emptyHiddenBoard(): HiddenBoard {
 type Cell = Board[number][number]
 
 export function randomPair(): Pair { return { axis: randomColor(), child: randomColor() } }
-function randomColor(): PuyoColor { const colors = getActiveColors(); return colors[Math.floor(Math.random() * colors.length)] }
+function randomColor(): PuyoColor { return COLORS[Math.floor(Math.random() * COLORS.length)] }
 
 export function createPlayer(controlMode: PlayerState['controlMode'] = 'human'): PlayerState {
   const first = randomPair()
