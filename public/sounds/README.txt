@@ -1,1 +1,0 @@
-Sound assets are committed as binary Git blobs in this directory.
