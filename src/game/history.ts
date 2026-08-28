@@ -30,12 +30,10 @@ function cloneHistoryEntry(entry: TurnHistoryEntry): TurnHistoryEntry {
  * starting state becomes the next Undo checkpoint.
  */
 export function startNewTurn(player: PlayerState): PlayerState {
-  const previousTurnStart = snapshotTurnState(player)
-  const nextTurnStart = snapshotTurnState({
-    ...player,
-    undoStack: player.undoStack,
-    redoStack: player.redoStack,
-  })
+  // `player.turnStart` is the state from which the just-finished puyo began.
+  // Keep that as the checkpoint for stepping one turn backward.
+  const previousTurnStart = structuredClone(player.turnStart)
+  const nextTurnStart = snapshotTurnState(player)
 
   return {
     ...player,
