@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import './keyboard-startup-buffer'
 import './keyboard-guide'
 import './title-reset.css'
@@ -12,27 +12,31 @@ import './timeline-controls'
 import './timeline-resume'
 import './timeline-branch'
 
-const STARTED_KEY = 'puyo-trainer-started-v1'
+function sendPauseKey(): void {
+  window.dispatchEvent(new KeyboardEvent('keydown', {
+    key: 'f',
+    code: 'KeyF',
+    bubbles: true,
+  }))
+}
 
 function Startup() {
-  const [started] = useState(() => {
-    try {
-      return window.sessionStorage.getItem(STARTED_KEY) === '1'
-    } catch {
-      return false
-    }
-  })
+  const [started, setStarted] = useState(false)
 
-  if (started) return <App />
+  useEffect(() => {
+    const timer = window.setTimeout(() => sendPauseKey(), 50)
+    return () => window.clearTimeout(timer)
+  }, [])
 
-  return <PaletteStartModal onStart={() => {
-    try {
-      window.sessionStorage.setItem(STARTED_KEY, '1')
-    } catch {
-      // Continue even if sessionStorage is unavailable.
-    }
-    window.location.reload()
-  }} />
+  const start = () => {
+    sendPauseKey()
+    setStarted(true)
+  }
+
+  return <>
+    <App />
+    {!started && <PaletteStartModal onStart={start} />}
+  </>
 }
 
 createRoot(document.getElementById('root')!).render(
