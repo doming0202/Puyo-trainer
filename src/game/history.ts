@@ -1,61 +1,55 @@
-import type { PlayerState } from './types'
+import type { PlayerState, TurnState } from './types'
 
-type PlayerHistory = {
-  initial: PlayerState
-  undoStack: PlayerState[]
+export function snapshotTurnState(player: PlayerState): TurnState {
+  return {
+    board: player.board.map((row) => [...row]),
+    current: { ...player.current, pair: { ...player.current.pair } },
+    next: player.next.map((pair) => ({ ...pair })),
+    garbage: player.garbage,
+    score: player.score,
+    chain: player.chain,
+    controlMode: player.controlMode,
+    alive: player.alive,
+    resolution: player.resolution ? structuredClone(player.resolution) : undefined,
+    fallElapsedMs: player.fallElapsedMs,
+    lockElapsedMs: player.lockElapsedMs,
+    quickTurnArmed: player.quickTurnArmed,
+  }
 }
 
-const histories = new WeakMap<object, PlayerHistory>()
-
-function cloneState(player: PlayerState): PlayerState {
-  return structuredClone(player)
-}
-
-function getOrCreateHistory(player: PlayerState): PlayerHistory {
-  const existing = histories.get(player)
-  if (existing) return existing
-
-  const history: PlayerHistory = {
-    initial: cloneState(player),
+export function startNewTurn(player: PlayerState): PlayerState {
+  const start = snapshotTurnState(player)
+  return {
+    ...player,
+    turnStart: start,
     undoStack: [],
   }
-  histories.set(player, history)
-  return history
 }
 
-function areEqual(a: PlayerState, b: PlayerState): boolean {
-  return JSON.stringify(a) === JSON.stringify(b)
+export function recordTurnAction(before: PlayerState, after: PlayerState): PlayerState {
+  if (before === after) return before
+  return {
+    ...after,
+    turnStart: structuredClone(before.turnStart),
+    undoStack: [...before.undoStack.map((entry) => structuredClone(entry)), snapshotTurnState(before)],
+  }
 }
 
-/**
- * Record one human operation as an undo point and carry the same history
- * object onto the resulting immutable PlayerState.
- */
-export function trackTransition(before: PlayerState, after: PlayerState): PlayerState {
-  const history = getOrCreateHistory(before)
-
-  if (after === before || areEqual(before, after)) return before
-
-  history.undoStack.push(cloneState(before))
-  histories.set(after, history)
-  return after
+export function undoTurnAction(player: PlayerState): PlayerState {
+  if (player.undoStack.length === 0) return player
+  const nextStack = player.undoStack.slice(0, -1).map((entry) => structuredClone(entry))
+  const previous = structuredClone(player.undoStack[player.undoStack.length - 1])
+  return {
+    ...previous,
+    turnStart: structuredClone(player.turnStart),
+    undoStack: nextStack,
+  }
 }
 
-/** Undo the most recent recorded gameplay operation. */
-export function undoPlayer(player: PlayerState): PlayerState {
-  const history = getOrCreateHistory(player)
-  const previous = history.undoStack.pop()
-  if (!previous) return player
-
-  histories.set(previous, history)
-  return previous
-}
-
-/** Return to the first state of the current player-history session. */
-export function resetPlayerToInitial(player: PlayerState): PlayerState {
-  const history = getOrCreateHistory(player)
-  const initial = cloneState(history.initial)
-  history.undoStack.length = 0
-  histories.set(initial, history)
-  return initial
+export function resetToTurnStart(player: PlayerState): PlayerState {
+  return {
+    ...structuredClone(player.turnStart),
+    turnStart: structuredClone(player.turnStart),
+    undoStack: [],
+  }
 }
