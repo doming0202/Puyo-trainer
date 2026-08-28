@@ -4,18 +4,18 @@ export type KeybindSlots = [string, string]
 export type Keybinds = Record<GameplayAction, KeybindSlots>
 
 export const DEFAULT_KEYBINDS: Keybinds = {
-  left: ['ArrowLeft', ''],
-  right: ['ArrowRight', ''],
-  'rotate-left': ['KeyZ', ''],
-  'rotate-right': ['ArrowUp', ''],
-  'soft-drop': ['ArrowDown', ''],
-  'hard-drop': ['Space', ''],
+  left: ['KeyA', 'ArrowLeft'],
+  right: ['KeyD', 'ArrowRight'],
+  'rotate-left': ['KeyQ', 'KeyJ'],
+  'rotate-right': ['KeyW', 'KeyK'],
+  'soft-drop': ['KeyS', 'ArrowDown'],
+  'hard-drop': ['Space', 'ArrowUp'],
   'reset-turn': ['KeyR', ''],
-  undo: ['KeyX', ''],
+  undo: ['KeyZ', ''],
   redo: ['KeyY', ''],
 }
 
-const STORAGE_KEY = 'puyo-trainer-keybinds'
+const STORAGE_KEY = 'puyo-trainer-keybinds-v2'
 const ACTIONS: GameplayAction[] = ['left', 'right', 'rotate-left', 'rotate-right', 'soft-drop', 'hard-drop', 'reset-turn', 'undo', 'redo']
 
 function normalizeSlots(value: unknown, fallback: KeybindSlots): KeybindSlots {
@@ -80,8 +80,8 @@ export function resetKeybinds(): Keybinds {
 export const GAMEPLAY_ACTION_LABELS: Record<GameplayAction, string> = {
   left: '左へ移動',
   right: '右へ移動',
-  'rotate-left': '左回転',
-  'rotate-right': '右回転',
+  'rotate-left': '⟳ 左回転',
+  'rotate-right': '⟳ 右回転',
   'soft-drop': '落下',
   'hard-drop': 'ハードドロップ',
   'reset-turn': '⟳ 現在のぷよを最初から',
