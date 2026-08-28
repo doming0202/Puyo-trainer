@@ -64,6 +64,14 @@ function install(): void {
   observer.observe(document.body, { childList: true, subtree: true })
 }
 
+// App.tsx and timeline-controls emit this event for programmatic seeks too,
+// notably when returning from a branch to the Original timeline. Treat every
+// completed seek identically so the next gameplay key always starts the same
+// countdown-based resume flow.
+window.addEventListener(EVENT_NAME, () => {
+  awaitingInput = true
+})
+
 window.addEventListener('keydown', (event) => {
   if (!awaitingInput || !isResumeKey(event)) return
   const target = event.target as HTMLElement | null
