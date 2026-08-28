@@ -60,14 +60,6 @@ function hideOverlay(): void {
   overlay?.classList.remove('visible')
 }
 
-function cancelCountdown(): void {
-  if (resumeTimer !== null) {
-    window.clearTimeout(resumeTimer)
-    resumeTimer = null
-  }
-  countingDown = false
-}
-
 function startResumeCountdown(): void {
   if (countingDown) return
   countingDown = true
@@ -106,7 +98,11 @@ function startResumeCountdown(): void {
 
 function resetPauseState(): void {
   manuallyPaused = false
-  cancelCountdown()
+  if (resumeTimer !== null) {
+    window.clearTimeout(resumeTimer)
+    resumeTimer = null
+  }
+  countingDown = false
   hideOverlay()
 }
 
@@ -139,10 +135,6 @@ function install(): void {
 
     startResumeCountdown()
   }, true)
-
-  window.addEventListener('keydown', (event) => {
-    if (event.code === 'Escape' && !countingDown) resetPauseState()
-  })
 
   window.addEventListener('click', (event) => {
     const target = event.target as HTMLElement | null
