@@ -1,6 +1,7 @@
 import type { ActivePair, Board, GameState, Pair, PlayerState, PuyoColor } from './types'
+import { COLOR_ORDER } from './colors'
 
-export const EDITABLE_COLORS: PuyoColor[] = [1, 2, 3, 4]
+export const EDITABLE_COLORS: PuyoColor[] = COLOR_ORDER
 
 export function setPairColors(player: PlayerState, axis: PuyoColor, child: PuyoColor): PlayerState { return { ...player, current: { ...player.current, pair: { axis, child } } } }
 export function setPairRotation(player: PlayerState, rotation: ActivePair['rotation']): PlayerState { return { ...player, current: { ...player.current, rotation } } }
