@@ -72,10 +72,9 @@ export function useColorPalette(): ColorPalette {
   const [palette, setPalette] = useState<ColorPalette>(() => loadColorPalette())
   useEffect(() => {
     const onChange = () => setPalette(loadColorPalette())
-    applyColorPalette(palette)
     window.addEventListener(EVENT_NAME, onChange)
     return () => window.removeEventListener(EVENT_NAME, onChange)
-  }, [palette])
+  }, [])
   return palette
 }
 
