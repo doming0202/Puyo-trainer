@@ -239,7 +239,9 @@ function install(): void {
 window.addEventListener('keydown', (event) => {
   if (event.repeat || event.ctrlKey || event.shiftKey || event.altKey || event.metaKey) return
   if (event.key.toLowerCase() !== 'p') return
-  if ((event.target as HTMLElement | null)?.matches('input, textarea, select, button')) return
+
+  const target = event.target as HTMLElement | null
+  if (target?.matches('input, textarea, select, button') && !target.matches('.timeline')) return
 
   const timeline = getTimeline()
   if (!timeline || timeline.disabled || Number(timeline.max) <= Number(timeline.min)) return
