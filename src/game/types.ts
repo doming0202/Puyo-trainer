@@ -1,10 +1,13 @@
 export const COLS = 6
-export const ROWS = 12
-export const VISIBLE_ROWS = 11
+export const VISIBLE_ROWS = 12
+export const HIDDEN_ROWS = 2
+export const ROWS = VISIBLE_ROWS
+export const TOTAL_ROWS = VISIBLE_ROWS + HIDDEN_ROWS
 
 export type PuyoColor = 0 | 1 | 2 | 3 | 4
 export type Cell = PuyoColor | null
 export type Board = Cell[][]
+export type HiddenBoard = Cell[][]
 
 export type Rotation = 0 | 1 | 2 | 3
 
@@ -42,6 +45,8 @@ export interface ResolutionState {
 
 export interface TurnState {
   board: Board
+  /** Two rows above the visible field: 13th row (index 1) and 14th row (index 0). */
+  hidden: HiddenBoard
   current: ActivePair
   next: Pair[]
   garbage: number
