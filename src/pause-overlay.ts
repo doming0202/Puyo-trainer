@@ -39,10 +39,13 @@ function ensureOverlay(): HTMLElement {
       }
       #${OVERLAY_ID} .pause-message.countdown{font-variant-numeric:tabular-nums}
 
-      /* Direct editing uses the side margin for Pause so the board/editor
-         remains unobstructed. Exiting edit mode automatically restores the
-         full-screen centered presentation above. */
-      body:has(.direct-editor-overlay) #${OVERLAY_ID}{
+      /* Editing and UI input modes use the side margin for Pause so the
+         board and controls remain unobstructed. */
+      body:has(.direct-editor-overlay) #${OVERLAY_ID},
+      body:has(.keybind-modal-backdrop) #${OVERLAY_ID},
+      body:has(input:focus) #${OVERLAY_ID},
+      body:has(textarea:focus) #${OVERLAY_ID},
+      body:has(select:focus) #${OVERLAY_ID}{
         inset:auto 18px auto auto;
         top:50%;
         width:clamp(150px,16vw,220px);
@@ -51,7 +54,11 @@ function ensureOverlay(): HTMLElement {
         background:transparent;
         backdrop-filter:none;
       }
-      body:has(.direct-editor-overlay) #${OVERLAY_ID} .pause-message{
+      body:has(.direct-editor-overlay) #${OVERLAY_ID} .pause-message,
+      body:has(.keybind-modal-backdrop) #${OVERLAY_ID} .pause-message,
+      body:has(input:focus) #${OVERLAY_ID} .pause-message,
+      body:has(textarea:focus) #${OVERLAY_ID} .pause-message,
+      body:has(select:focus) #${OVERLAY_ID} .pause-message{
         min-width:0;
         font-size:clamp(42px,5vw,72px);
         letter-spacing:.04em;
