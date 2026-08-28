@@ -23,6 +23,7 @@ export function startNewTurn(player: PlayerState): PlayerState {
     ...player,
     turnStart: start,
     undoStack: [],
+    redoStack: [],
   }
 }
 
@@ -32,24 +33,40 @@ export function recordTurnAction(before: PlayerState, after: PlayerState): Playe
     ...after,
     turnStart: structuredClone(before.turnStart),
     undoStack: [...before.undoStack.map((entry) => structuredClone(entry)), snapshotTurnState(before)],
+    redoStack: [],
   }
 }
 
 export function undoTurnAction(player: PlayerState): PlayerState {
   if (player.undoStack.length === 0) return player
-  const nextStack = player.undoStack.slice(0, -1).map((entry) => structuredClone(entry))
   const previous = structuredClone(player.undoStack[player.undoStack.length - 1])
   return {
     ...previous,
+    controlMode: player.controlMode,
     turnStart: structuredClone(player.turnStart),
-    undoStack: nextStack,
+    undoStack: player.undoStack.slice(0, -1).map((entry) => structuredClone(entry)),
+    redoStack: [...player.redoStack.map((entry) => structuredClone(entry)), snapshotTurnState(player)],
+  }
+}
+
+export function redoTurnAction(player: PlayerState): PlayerState {
+  if (player.redoStack.length === 0) return player
+  const next = structuredClone(player.redoStack[player.redoStack.length - 1])
+  return {
+    ...next,
+    controlMode: player.controlMode,
+    turnStart: structuredClone(player.turnStart),
+    undoStack: [...player.undoStack.map((entry) => structuredClone(entry)), snapshotTurnState(player)],
+    redoStack: player.redoStack.slice(0, -1).map((entry) => structuredClone(entry)),
   }
 }
 
 export function resetToTurnStart(player: PlayerState): PlayerState {
   return {
     ...structuredClone(player.turnStart),
+    controlMode: player.controlMode,
     turnStart: structuredClone(player.turnStart),
     undoStack: [],
+    redoStack: [],
   }
 }
