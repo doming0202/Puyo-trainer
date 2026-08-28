@@ -1,4 +1,5 @@
 import './keyboard-startup-buffer'
+import './color-selection'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App'
