@@ -1,4 +1,4 @@
-import { playComboSound } from './sound'
+import { playComboSound, playMoveSound, playRotateSound } from './sound'
 import { recordTurnAction, redoTurnAction, resetToTurnStart, startNewTurn, undoTurnAction } from './history'
 import { COLS, HIDDEN_ROWS, ROWS, TOTAL_ROWS, type ActivePair, type Board, type FallingCell, type GameState, type HiddenBoard, type Pair, type PlayerState, type PuyoColor, type Rotation } from './types'
 
@@ -80,6 +80,7 @@ export function movePair(player: PlayerState, dx: number): PlayerState {
   if (!player.alive || player.resolution) return player
   const candidate = { ...player.current, x: player.current.x + dx }
   if (!canPlace(player, candidate)) return player
+  playMoveSound()
   return { ...player, current: candidate, lockElapsedMs: 0, quickTurnArmed: false }
 }
 
@@ -107,6 +108,7 @@ export function rotatePair(player: PlayerState, direction: 1 | -1): PlayerState 
   const valid = candidates.find((candidate) => canPlace(player, candidate))
 
   if (valid) {
+    playRotateSound()
     return { ...player, current: valid, lockElapsedMs: 0, quickTurnArmed: false }
   }
 
@@ -121,6 +123,7 @@ export function rotatePair(player: PlayerState, direction: 1 | -1): PlayerState 
     return { ...player, quickTurnArmed: true, lockElapsedMs: 0 }
   }
 
+  playRotateSound()
   return { ...player, current: quickCandidate, quickTurnArmed: false, lockElapsedMs: 0 }
 }
 
