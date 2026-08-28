@@ -73,6 +73,15 @@ function formatTime(ms: number): string {
   return `${minutes}:${seconds}`
 }
 
+function bindingFromEvent(event: KeyboardEvent): string {
+  const modifiers: string[] = []
+  if (event.ctrlKey) modifiers.push('Ctrl')
+  if (event.shiftKey) modifiers.push('Shift')
+  if (event.altKey) modifiers.push('Alt')
+  if (event.metaKey) modifiers.push('Win')
+  return [...modifiers, event.code].join('+')
+}
+
 export default function App() {
   const [game, setGame] = useState<GameState>(() => createGame())
   const [replay, setReplay] = useState<ReplayState>(() => createReplay(game))
@@ -133,19 +142,25 @@ export default function App() {
     setGame(current => {
       const playerIndex = focusedPlayer
       const player = current.players[playerIndex]
-      if (editMode || !player.alive || player.controlMode !== 'human' || !current.running || replayRef.current.playing) return current
+      const historyAction = action === 'reset-turn' || action === 'undo' || action === 'redo'
+      if (editMode || replayRef.current.playing || player.controlMode !== 'human') return current
+      if (!historyAction && (!player.alive || !current.running)) return current
+
       const elapsedMs = syncElapsed(current.running)
       const players = [...current.players] as [PlayerState, PlayerState]
-      players[playerIndex] = updatePlayer(player, action)
+      const nextPlayer = updatePlayer(player, action)
+      if (nextPlayer === player) return current
+      players[playerIndex] = nextPlayer
       const nextGame = { ...current, players, activePlayer: playerIndex, tick: current.tick + 1 }
       setReplay(state => appendFrame(state, nextGame, elapsedMs))
       return nextGame
     })
   }, [editMode, focusedPlayer, syncElapsed])
 
-  const actionForKey = useCallback((code: string): GameplayAction | null => {
+  const actionForKey = useCallback((event: KeyboardEvent): GameplayAction | null => {
+    const binding = bindingFromEvent(event)
     const entries = Object.entries(keybinds) as [GameplayAction, [string, string]][]
-    const match = entries.find(([, slots]) => slots[0] === code || slots[1] === code)
+    const match = entries.find(([, slots]) => slots[0] === binding || slots[1] === binding)
     return match?.[0] ?? null
   }, [keybinds])
 
@@ -216,7 +231,7 @@ export default function App() {
       }
 
       if (editMode) return
-      const action = actionForKey(event.code)
+      const action = actionForKey(event)
       if (action) {
         event.preventDefault()
         dispatch(action)
