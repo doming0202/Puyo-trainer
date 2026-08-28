@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { advancePlayer, advanceResolution, cellsOf, createGame, updatePlayer } from './game/engine'
 import { EDITABLE_COLORS, setGarbage, setNextPair, setPairColors, setPairRotation } from './game/editor'
 import { appendFrame, createReplay, findFrameAtElapsed, frameToGame, REPLAY_SPEEDS, type ReplayState } from './game/replay'
@@ -22,7 +22,22 @@ type EditControls = {
 function BoardView({ player, editMode, onBoardChange, onPairEdit }: { player: PlayerState; editMode: boolean; onBoardChange: (board: Board) => void; onPairEdit: (pair: PairEdit) => void }) {
   const active = player.resolution ? new Map<string, PuyoColor>() : new Map(cellsOf(player.current).map((cell) => [`${cell.x},${cell.y}`, cell.color]))
   const clearing = new Set((player.resolution?.pendingGroups ?? []).flatMap((group) => group.map(({ x, y }) => `${x},${y}`)))
-  return <div className="board-stage"><div className="board-wrap"><div className="board" aria-label="ゲーム盤面">{Array.from({ length: ROWS * COLS }, (_, index) => { const x = index % COLS; const y = Math.floor(index / COLS); const key = `${x},${y}`; const color = active.get(key) ?? player.board[y][x]; return <div className={`cell ${clearing.has(key) ? 'clearing-cell' : ''}`} key={key}>{color && <span className="puyo" style={{ background: COLOR_MAP[color] }} />}</div> })}</div>{editMode && <DirectBoardEditor board={player.board} onBoardChange={onBoardChange} onPairEdit={onPairEdit} />}</div><div className="score">SCORE <b>{player.score.toLocaleString()}</b></div></div>
+  const falling = new Map((player.resolution?.fallingCells ?? []).map((cell) => [`${cell.x},${cell.y}`, cell]))
+
+  return <div className="board-stage"><div className="board-wrap"><div className="board" aria-label="ゲーム盤面">{Array.from({ length: ROWS * COLS }, (_, index) => {
+    const x = index % COLS
+    const y = Math.floor(index / COLS)
+    const key = `${x},${y}`
+    const color = active.get(key) ?? player.board[y][x]
+    const fallingCell = falling.get(key)
+    const puyoStyle = color ? ({
+      background: COLOR_MAP[color],
+      ...(fallingCell ? { '--fall-offset': `${(fallingCell.fromY - y) * 40}px` } : {}),
+    } as CSSProperties & Record<'--fall-offset', string>) : undefined
+    return <div className={`cell ${clearing.has(key) ? 'clearing-cell' : ''}`} key={key}>
+      {color && <span className={`puyo ${fallingCell ? 'falling-puyo' : ''}`} style={puyoStyle} />}
+    </div>
+  })}</div>{editMode && <DirectBoardEditor board={player.board} onBoardChange={onBoardChange} onPairEdit={onPairEdit} />}</div><div className="score">SCORE <b>{player.score.toLocaleString()}</b></div></div>
 }
 
 function NextView({ player, editable, onPair }: { player: PlayerState; editable: boolean; onPair: (index: number, part: 'axis' | 'child', color: PuyoColor) => void }) {
