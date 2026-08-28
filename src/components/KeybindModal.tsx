@@ -3,6 +3,7 @@ import { GAMEPLAY_ACTION_LABELS, formatKeyCode, resetKeybinds, setKeybind, type 
 import './KeybindModal.css'
 
 const ACTIONS: GameplayAction[] = ['left', 'right', 'rotate-left', 'rotate-right', 'soft-drop', 'hard-drop', 'reset-turn', 'undo', 'redo']
+const KEYBINDS_CHANGED_EVENT = 'puyo-keybinds-changed'
 
 type ListeningTarget = { action: GameplayAction; slot: 0 | 1 } | null
 
@@ -28,6 +29,11 @@ function isModifierOnly(code: string): boolean {
 export function KeybindModal({ keybinds, onChange, onClose }: Props) {
   const [listening, setListening] = useState<ListeningTarget>(null)
 
+  const applyKeybinds = (next: Keybinds) => {
+    onChange(next)
+    window.dispatchEvent(new Event(KEYBINDS_CHANGED_EVENT))
+  }
+
   useEffect(() => {
     if (!listening) return
     const onKeyDown = (event: KeyboardEvent) => {
@@ -38,12 +44,12 @@ export function KeybindModal({ keybinds, onChange, onClose }: Props) {
         return
       }
       if (isModifierOnly(event.code)) return
-      onChange(setKeybind(keybinds, listening.action, listening.slot, eventToBinding(event)))
+      applyKeybinds(setKeybind(keybinds, listening.action, listening.slot, eventToBinding(event)))
       setListening(null)
     }
     window.addEventListener('keydown', onKeyDown, true)
     return () => window.removeEventListener('keydown', onKeyDown, true)
-  }, [keybinds, listening, onChange])
+  }, [keybinds, listening])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -85,7 +91,7 @@ export function KeybindModal({ keybinds, onChange, onClose }: Props) {
 
       <div className="keybind-modal-footer">
         <span>副キー対応 / Ctrl・Shift・Alt・Win の組み合わせも登録可能 / Esc：変更待ち解除・モーダルを閉じる</span>
-        <button onClick={() => { onChange(resetKeybinds()); setListening(null) }}>初期設定に戻す</button>
+        <button onClick={() => { applyKeybinds(resetKeybinds()); setListening(null) }}>初期設定に戻す</button>
       </div>
     </section>
   </div>
