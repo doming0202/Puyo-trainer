@@ -1,6 +1,7 @@
 import { playComboSound, playMoveSound, playRotateSound } from './sound'
 import { recordTurnAction, redoTurnAction, resetToTurnStart, startNewTurn, undoTurnAction } from './history'
 import { COLS, HIDDEN_ROWS, ROWS, TOTAL_ROWS, type ActivePair, type Board, type FallingCell, type GameState, type HiddenBoard, type Pair, type PlayerState, type PuyoColor, type Rotation } from './types'
+import { getFallIntervalMs } from './fall-speed'
 
 export const COLORS: PuyoColor[] = [1, 2, 3, 4]
 export const FALL_INTERVAL_MS = 900
@@ -148,12 +149,13 @@ export function advancePlayer(player: PlayerState, deltaMs: number): PlayerState
   }
 
   const fallElapsedMs = player.fallElapsedMs + delta
-  if (fallElapsedMs < FALL_INTERVAL_MS) return { ...player, fallElapsedMs, lockElapsedMs: 0 }
+  const fallIntervalMs = getFallIntervalMs(FALL_INTERVAL_MS)
+  if (fallElapsedMs < fallIntervalMs) return { ...player, fallElapsedMs, lockElapsedMs: 0 }
 
   return {
     ...player,
     current: candidate,
-    fallElapsedMs: fallElapsedMs - FALL_INTERVAL_MS,
+    fallElapsedMs: fallElapsedMs - fallIntervalMs,
     lockElapsedMs: 0,
     quickTurnArmed: false,
   }
