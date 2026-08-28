@@ -18,6 +18,23 @@ export const PALETTE_COLOR_NAMES: Record<PaletteColor, string> = {
 }
 
 const STORAGE_KEY = 'puyo-trainer-active-palette-v1'
+const STYLE_ID = 'puyo-trainer-palette-runtime'
+
+const COLOR_HEX: Record<PaletteColor, string> = {
+  1: '#ff5b68',
+  2: '#5aa7ff',
+  3: '#58d68d',
+  4: '#b66cff',
+  5: '#ffd45a',
+}
+
+const COLOR_RGB: Record<PaletteColor, string> = {
+  1: 'rgb(255, 91, 104)',
+  2: 'rgb(90, 167, 255)',
+  3: 'rgb(88, 214, 141)',
+  4: 'rgb(182, 108, 255)',
+  5: 'rgb(255, 212, 90)',
+}
 
 function isPalette(value: unknown): value is ActivePalette {
   if (!Array.isArray(value) || value.length !== 4) return false
@@ -38,6 +55,32 @@ export function loadActivePalette(): ActivePalette {
   return [...PALETTE_OPTIONS[0]] as ActivePalette
 }
 
+function applyPaletteStyle(palette: ActivePalette): void {
+  if (typeof document === 'undefined') return
+
+  const oldColors = [1, 2, 3, 4] as PaletteColor[]
+  const rules = oldColors.map((internalColor, index) => {
+    const displayColor = palette[index]
+    const selectors = [
+      `.puyo[style*="${COLOR_HEX[internalColor]}"]`,
+      `.puyo[style*="${COLOR_RGB[internalColor]}"]`,
+      `.mini-puyo[style*="${COLOR_HEX[internalColor]}"]`,
+      `.mini-puyo[style*="${COLOR_RGB[internalColor]}"]`,
+      `.context-dot[style*="${COLOR_HEX[internalColor]}"]`,
+      `.context-dot[style*="${COLOR_RGB[internalColor]}"]`,
+    ].join(',\n')
+    return `${selectors} { background: ${COLOR_HEX[displayColor]} !important; }`
+  }).join('\n')
+
+  let style = document.getElementById(STYLE_ID) as HTMLStyleElement | null
+  if (!style) {
+    style = document.createElement('style')
+    style.id = STYLE_ID
+    document.head.appendChild(style)
+  }
+  if (style.textContent !== rules) style.textContent = rules
+}
+
 export function saveActivePalette(palette: ActivePalette): void {
   if (!isPalette(palette)) return
   try {
@@ -45,8 +88,14 @@ export function saveActivePalette(palette: ActivePalette): void {
   } catch {
     // Ignore storage failures; the current session can continue using the palette.
   }
+  applyPaletteStyle(palette)
+  window.dispatchEvent(new CustomEvent('puyo-palette-changed'))
 }
 
 export function getActiveColors(): ActivePalette {
   return loadActivePalette()
+}
+
+if (typeof window !== 'undefined') {
+  applyPaletteStyle(loadActivePalette())
 }
