@@ -92,6 +92,18 @@ export function rotatePair(player: PlayerState, direction: 1 | -1): PlayerState 
     { ...player.current, rotation, x: player.current.x - 1 },
     { ...player.current, rotation, x: player.current.x + 1 },
   ]
+
+  // At the visible ceiling, real Puyo rules allow the rotating pair to use
+  // the off-screen space when the normal rotation is blocked. This is the
+  // entry point needed for building 13th-row positions without resizing the UI.
+  if (player.current.y === 0) {
+    candidates.push(
+      { ...player.current, rotation, y: -1 },
+      { ...player.current, rotation, x: player.current.x - 1, y: -1 },
+      { ...player.current, rotation, x: player.current.x + 1, y: -1 },
+    )
+  }
+
   const valid = candidates.find((candidate) => canPlace(player, candidate))
 
   if (valid) {
