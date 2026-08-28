@@ -2,6 +2,7 @@ import type { TimelineBranchInfo } from './game/replay'
 
 const TRACK_ID = 'puyo-timeline-original-track'
 const STYLE_ID = 'puyo-timeline-original-track-style'
+const RETURN_EVENT = 'puyo-timeline-return-original'
 
 function ensureStyle(): void {
   if (document.getElementById(STYLE_ID)) return
@@ -20,7 +21,6 @@ function ensureStyle(): void {
       font-size:9px;
       line-height:1;
       letter-spacing:.05em;
-      pointer-events:none;
       user-select:none;
     }
     #${TRACK_ID} .branch-track-label{
@@ -36,6 +36,7 @@ function ensureStyle(): void {
       border-radius:999px;
       background:#202733;
       box-shadow:inset 0 0 0 1px rgba(255,255,255,.035);
+      pointer-events:none;
     }
     #${TRACK_ID} .branch-original-fill{
       position:absolute;
@@ -63,6 +64,23 @@ function ensureStyle(): void {
       color:#687384;
       font-variant-numeric:tabular-nums;
     }
+    #${TRACK_ID} .branch-return{
+      flex:0 0 auto;
+      border:1px solid #344153;
+      border-radius:6px;
+      padding:4px 7px;
+      background:#171d26;
+      color:#bdc7d4;
+      font:700 9px/1 inherit;
+      cursor:pointer;
+      pointer-events:auto;
+      white-space:nowrap;
+    }
+    #${TRACK_ID} .branch-return:hover{
+      border-color:#5b6f88;
+      color:#f0f4f9;
+      background:#1c2430;
+    }
     .timeline-wrap.branch-view-ready .timeline-labels{margin-top:2px}
   `
   document.head.appendChild(style)
@@ -85,9 +103,15 @@ function render(info: TimelineBranchInfo, timeline: HTMLInputElement, wrap: HTML
   if (!host) {
     host = document.createElement('div')
     host.id = TRACK_ID
-    host.innerHTML = '<span class="branch-track-label">ORIGINAL</span><span class="branch-track"><span class="branch-original-fill"></span><span class="branch-fork"></span></span><span class="branch-track-caption"></span>'
+    host.innerHTML = '<span class="branch-track-label">ORIGINAL</span><span class="branch-track"><span class="branch-original-fill"></span><span class="branch-fork"></span></span><span class="branch-track-caption"></span><button type="button" class="branch-return">Originalへ戻る</button>'
     const labels = wrap.querySelector('.timeline-labels')
     wrap.insertBefore(host, labels ?? timeline)
+
+    host.querySelector<HTMLButtonElement>('.branch-return')?.addEventListener('click', (event) => {
+      event.preventDefault()
+      event.stopPropagation()
+      window.dispatchEvent(new Event(RETURN_EVENT))
+    })
   }
 
   const currentMax = Math.max(1, Number(timeline.max) || 1)
