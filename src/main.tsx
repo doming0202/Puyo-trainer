@@ -1,5 +1,6 @@
 import './keyboard-startup-buffer'
 import './keyboard-guide'
+import './title-reset.css'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App'
