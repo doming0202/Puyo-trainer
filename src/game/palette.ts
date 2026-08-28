@@ -21,7 +21,8 @@ const STORAGE_KEY = 'puyo-trainer-active-palette-v1'
 
 function isPalette(value: unknown): value is ActivePalette {
   if (!Array.isArray(value) || value.length !== 4) return false
-  return value.every((color): color is PaletteColor => color === 1 || color === 2 || color === 3 || color === 4 || color === 5) && new Set(value).size === 4
+  const values = value as unknown[]
+  return values.every((color): color is PaletteColor => typeof color === 'number' && color >= 1 && color <= 5) && new Set(values).size === 4
 }
 
 export function loadActivePalette(): ActivePalette {
