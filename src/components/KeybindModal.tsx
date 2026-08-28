@@ -4,6 +4,8 @@ import './KeybindModal.css'
 
 const ACTIONS: GameplayAction[] = ['left', 'right', 'rotate-left', 'rotate-right', 'soft-drop', 'hard-drop']
 
+type ListeningTarget = { action: GameplayAction; slot: 0 | 1 } | null
+
 type Props = {
   keybinds: Keybinds
   onChange: (keybinds: Keybinds) => void
@@ -11,7 +13,7 @@ type Props = {
 }
 
 export function KeybindModal({ keybinds, onChange, onClose }: Props) {
-  const [listening, setListening] = useState<GameplayAction | null>(null)
+  const [listening, setListening] = useState<ListeningTarget>(null)
 
   useEffect(() => {
     if (!listening) return
@@ -22,8 +24,8 @@ export function KeybindModal({ keybinds, onChange, onClose }: Props) {
         setListening(null)
         return
       }
-      if (event.ctrlKey || event.altKey || event.metaKey || event.code === 'ShiftLeft' || event.code === 'ShiftRight' || event.code === 'ControlLeft' || event.code === 'ControlRight' || event.code === 'AltLeft' || event.code === 'AltRight') return
-      onChange(setKeybind(keybinds, listening, event.code))
+      if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return
+      onChange(setKeybind(keybinds, listening.action, listening.slot, event.code))
       setListening(null)
     }
     window.addEventListener('keydown', onKeyDown, true)
@@ -54,16 +56,22 @@ export function KeybindModal({ keybinds, onChange, onClose }: Props) {
       <div className="keybind-focus-help"><strong>フォーカス切替</strong><span>Ctrl + 1 → Player A　・　Ctrl + 2 → Player B</span></div>
 
       <div className="keybind-list">
-        {ACTIONS.map(action => <div className={`keybind-row ${listening === action ? 'listening' : ''}`} key={action}>
+        {ACTIONS.map(action => <div className="keybind-row" key={action}>
           <div className="keybind-action">{GAMEPLAY_ACTION_LABELS[action]}</div>
-          <button className="keybind-key" onClick={() => setListening(action)}>
-            {listening === action ? 'キーを押してください' : formatKeyCode(keybinds[action])}
-          </button>
+          <div className="keybind-slots">
+            {[0, 1].map(slot => {
+              const selected = listening?.action === action && listening.slot === slot
+              return <button key={slot} className={`keybind-key ${slot === 1 ? 'secondary' : ''} ${selected ? 'listening' : ''}`} onClick={() => setListening({ action, slot: slot as 0 | 1 })}>
+                <small>{slot === 0 ? '主' : '副'}</small>
+                <span>{selected ? 'キーを押してください' : formatKeyCode(keybinds[action][slot as 0 | 1])}</span>
+              </button>
+            })}
+          </div>
         </div>)}
       </div>
 
       <div className="keybind-modal-footer">
-        <span>Esc：設定を閉じる / 変更待ちを解除</span>
+        <span>副キーは未設定でもOK / Esc：変更待ち解除・モーダルを閉じる</span>
         <button onClick={() => { onChange(resetKeybinds()); setListening(null) }}>初期設定に戻す</button>
       </div>
     </section>
