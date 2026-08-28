@@ -1,11 +1,15 @@
 const OVERLAY_ID = 'puyo-pause-overlay'
 const STYLE_ID = 'puyo-pause-overlay-style'
 const RESUME_COUNTDOWN_MS = 650
+const TIMELINE_SEEK_EVENT = 'puyo-timeline-seek-complete'
+const TIMELINE_RESUME_REQUEST_EVENT = 'puyo-timeline-resume-request'
 
 let manuallyPaused = false
+let timelineAwaitingInput = false
 let countingDown = false
 let syntheticResume = false
 let resumeTimer: number | null = null
+let pendingResumeEvent: { key: string; code: string; ctrlKey: boolean; shiftKey: boolean; altKey: boolean; metaKey: boolean } | null = null
 
 function isGameplayBlocked(): boolean {
   if (document.querySelector('.direct-editor-overlay, .keybind-modal-backdrop')) return true
@@ -79,9 +83,10 @@ function hideOverlay(): void {
   overlay?.classList.remove('visible')
 }
 
-function startResumeCountdown(): void {
+function startResumeCountdown(resumeEvent: typeof pendingResumeEvent = null): void {
   if (countingDown) return
   countingDown = true
+  pendingResumeEvent = resumeEvent
   let count = 3
 
   const next = () => {
@@ -99,6 +104,7 @@ function startResumeCountdown(): void {
       resumeTimer = null
       countingDown = false
       manuallyPaused = false
+      timelineAwaitingInput = false
       hideOverlay()
 
       syntheticResume = true
@@ -109,6 +115,23 @@ function startResumeCountdown(): void {
         cancelable: true,
       }))
       syntheticResume = false
+
+      const eventToResume = pendingResumeEvent
+      pendingResumeEvent = null
+      if (eventToResume) {
+        window.setTimeout(() => {
+          window.dispatchEvent(new KeyboardEvent('keydown', {
+            key: eventToResume.key,
+            code: eventToResume.code,
+            ctrlKey: eventToResume.ctrlKey,
+            shiftKey: eventToResume.shiftKey,
+            altKey: eventToResume.altKey,
+            metaKey: eventToResume.metaKey,
+            bubbles: true,
+            cancelable: true,
+          }))
+        }, 0)
+      }
     }, 220)
   }
 
@@ -117,16 +140,33 @@ function startResumeCountdown(): void {
 
 function resetPauseState(): void {
   manuallyPaused = false
+  timelineAwaitingInput = false
+  pendingResumeEvent = null
   if (resumeTimer !== null) {
     window.clearTimeout(resumeTimer)
     resumeTimer = null
   }
   countingDown = false
   hideOverlay()
+  window.dispatchEvent(new Event('puyo-timeline-resume-cancel'))
 }
 
 function install(): void {
   ensureOverlay()
+
+  window.addEventListener(TIMELINE_SEEK_EVENT, () => {
+    if (countingDown) return
+    timelineAwaitingInput = true
+    manuallyPaused = false
+    pendingResumeEvent = null
+    setOverlay('Pause')
+  })
+
+  window.addEventListener(TIMELINE_RESUME_REQUEST_EVENT, (event) => {
+    if (!timelineAwaitingInput || countingDown || isGameplayBlocked()) return
+    const detail = (event as CustomEvent<typeof pendingResumeEvent>).detail ?? null
+    startResumeCountdown(detail)
+  })
 
   window.addEventListener('keydown', (event) => {
     if (syntheticResume || event.code !== 'KeyF' || event.repeat) return
@@ -135,6 +175,12 @@ function install(): void {
 
     event.preventDefault()
     event.stopImmediatePropagation()
+
+    if (timelineAwaitingInput) {
+      // A timeline seek is already paused. Keep F from toggling that pause;
+      // normal gameplay keys are handled by timeline-resume.ts instead.
+      return
+    }
 
     if (!manuallyPaused) {
       manuallyPaused = true
