@@ -55,13 +55,19 @@ export interface TurnState {
   quickTurnArmed: boolean
 }
 
+export interface TurnHistoryEntry {
+  state: TurnState
+  turnStart: TurnState
+  undoStack: TurnState[]
+}
+
 export interface PlayerState extends TurnState {
   /** State immediately after the current falling puyo appeared. */
   turnStart: TurnState
-  /** States before each manual operation, newest last. */
+  /** Turn-start states for previously played falling puyos, newest last. */
   undoStack: TurnState[]
-  /** States that can be restored after undoing, newest last. */
-  redoStack: TurnState[]
+  /** Exact states captured when stepping backward, newest last. */
+  redoStack: TurnHistoryEntry[]
 }
 
 export interface GameState {
