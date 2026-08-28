@@ -1,5 +1,5 @@
 import { playComboSound } from './sound'
-import { recordTurnAction, resetToTurnStart, startNewTurn, undoTurnAction } from './history'
+import { recordTurnAction, redoTurnAction, resetToTurnStart, startNewTurn, undoTurnAction } from './history'
 import { COLS, ROWS, type ActivePair, type Board, type FallingCell, type GameState, type Pair, type PlayerState, type PuyoColor, type Rotation } from './types'
 
 export const COLORS: PuyoColor[] = [1, 2, 3, 4]
@@ -17,7 +17,7 @@ function randomColor(): PuyoColor { return COLORS[Math.floor(Math.random() * COL
 
 export function createPlayer(controlMode: PlayerState['controlMode'] = 'human'): PlayerState {
   const first = randomPair()
-  const base: Omit<PlayerState, 'turnStart' | 'undoStack'> = {
+  const base: Omit<PlayerState, 'turnStart' | 'undoStack' | 'redoStack'> = {
     board: emptyBoard(),
     current: spawnPair(first),
     next: [randomPair(), randomPair(), randomPair(), randomPair()],
@@ -30,7 +30,7 @@ export function createPlayer(controlMode: PlayerState['controlMode'] = 'human'):
     lockElapsedMs: 0,
     quickTurnArmed: false,
   }
-  const player = { ...base, turnStart: structuredClone(base), undoStack: [] }
+  const player = { ...base, turnStart: structuredClone(base), undoStack: [], redoStack: [] }
   return player
 }
 export function createGame(): GameState { return { players: [createPlayer('human'), createPlayer('fixed')], activePlayer: 0, running: true, tick: 0 } }
@@ -218,11 +218,12 @@ function findGroups(board: Board): Array<Array<{ x: number; y: number }>> {
   return groups
 }
 
-export type GameplayAction = 'left' | 'right' | 'rotate-left' | 'rotate-right' | 'soft-drop' | 'hard-drop' | 'reset-turn' | 'undo'
+export type GameplayAction = 'left' | 'right' | 'rotate-left' | 'rotate-right' | 'soft-drop' | 'hard-drop' | 'reset-turn' | 'undo' | 'redo'
 
 export function updatePlayer(player: PlayerState, action: GameplayAction): PlayerState {
   if (action === 'reset-turn') return resetToTurnStart(player)
   if (action === 'undo') return undoTurnAction(player)
+  if (action === 'redo') return redoTurnAction(player)
 
   let next: PlayerState
   switch (action) {
