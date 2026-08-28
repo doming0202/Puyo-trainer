@@ -75,6 +75,12 @@ export function KeybindModal({ keybinds, onChange, onClose }: Props) {
     saveActivePalette(next)
   }
 
+  const resetPalette = () => {
+    const initial = [...PALETTE_OPTIONS[0]] as ActivePalette
+    setPalette(initial)
+    saveActivePalette(initial)
+  }
+
   return <div className="keybind-modal-backdrop" role="presentation" onMouseDown={onClose}>
     <section className="keybind-modal" role="dialog" aria-modal="true" aria-labelledby="keybind-title" onMouseDown={event => event.stopPropagation()}>
       <div className="keybind-modal-header">
@@ -99,7 +105,10 @@ export function KeybindModal({ keybinds, onChange, onClose }: Props) {
             </button>
           })}
         </div>
-        <small>変更した配色は次の「新しいゲーム」から使用します。</small>
+        <div className="keybind-palette-footer">
+          <small>変更した配色は次の「新しいゲーム」から使用します。</small>
+          <button type="button" onClick={resetPalette}>初期配色に戻す</button>
+        </div>
       </div>
 
       <div className="keybind-list">
