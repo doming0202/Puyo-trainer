@@ -4,7 +4,7 @@ export const HIDDEN_ROWS = 2
 export const ROWS = VISIBLE_ROWS
 export const TOTAL_ROWS = VISIBLE_ROWS + HIDDEN_ROWS
 
-export type PuyoColor = 0 | 1 | 2 | 3 | 4 | 5
+export type PuyoColor = 0 | 1 | 2 | 3 | 4
 export type Cell = PuyoColor | null
 export type Board = Cell[][]
 export type HiddenBoard = Cell[][]
