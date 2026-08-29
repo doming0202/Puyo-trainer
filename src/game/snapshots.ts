@@ -63,13 +63,15 @@ function normalizeHidden(hidden: PlayerState['hidden'] | undefined): PlayerState
 }
 
 function normalizeTurnState(state: TurnState, fallback: PlayerState): TurnState {
+  const incomingGarbage = state.incomingGarbage ?? state.garbage ?? fallback.incomingGarbage ?? fallback.garbage ?? 0
   return {
     ...state,
     board: state.board?.map((row) => [...row]) ?? fallback.board.map((row) => [...row]),
     hidden: normalizeHidden(state.hidden),
     current: state.current ? { ...state.current, pair: { ...state.current.pair } } : { ...fallback.current, pair: { ...fallback.current.pair } },
     next: state.next?.map((pair) => ({ ...pair })) ?? fallback.next.map((pair) => ({ ...pair })),
-    garbage: state.garbage ?? fallback.garbage,
+    incomingGarbage,
+    garbage: state.garbage ?? incomingGarbage,
     score: state.score ?? fallback.score,
     chain: state.chain ?? fallback.chain,
     controlMode: state.controlMode ?? fallback.controlMode,
@@ -82,8 +84,11 @@ function normalizeTurnState(state: TurnState, fallback: PlayerState): TurnState 
 }
 
 function normalizePlayer(player: PlayerState): PlayerState {
+  const incomingGarbage = player.incomingGarbage ?? player.garbage ?? 0
   const base = {
     ...player,
+    incomingGarbage,
+    garbage: player.garbage ?? incomingGarbage,
     board: player.board.map((row) => [...row]),
     hidden: normalizeHidden(player.hidden),
     fallElapsedMs: player.fallElapsedMs ?? 0,
