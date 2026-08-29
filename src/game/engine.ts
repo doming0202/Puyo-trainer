@@ -211,8 +211,19 @@ function applyIncomingGarbage(player: PlayerState): PlayerState {
   const remainder = pending % COLS
   const placementColumns: number[] = []
   const garbageCell = garbageCellForTier(getGarbageTierForCount(pending))
-  for (let row = 0; row < fullRows; row += 1) for (let x = 0; x < COLS; x += 1) placementColumns.push(x)
-  for (let x = 0; x < remainder; x += 1) placementColumns.push(x)
+
+  for (let row = 0; row < fullRows; row += 1) {
+    for (let x = 0; x < COLS; x += 1) placementColumns.push(x)
+  }
+
+  if (remainder > 0) {
+    const shuffledColumns = Array.from({ length: COLS }, (_, x) => x)
+    for (let i = shuffledColumns.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(Math.random() * (i + 1))
+      ;[shuffledColumns[i], shuffledColumns[j]] = [shuffledColumns[j], shuffledColumns[i]]
+    }
+    placementColumns.push(...shuffledColumns.slice(0, remainder))
+  }
 
   const placeAtTopOfColumn = (x: number): boolean => {
     for (let y = ROWS - 1; y >= -HIDDEN_ROWS; y -= 1) {
@@ -296,7 +307,7 @@ export function advanceResolution(player: PlayerState): ResolutionAdvanceResult 
 
 function finishPlacement(player: PlayerState): PlayerState {
   // Phase 2: the current turn is fully resolved first; then any
-  // accumulated incoming garbage lands before the next puyo appears.
+  // accumulated incoming garbage lands before the next turn starts.
   const withGarbage = applyIncomingGarbage(player)
   if (!withGarbage.alive) return withGarbage
 
