@@ -1,9 +1,12 @@
+import { loadKeybinds, type GameplayAction } from './game/keybinds'
+
 const OVERLAY_ID = 'puyo-pause-overlay'
 const STYLE_ID = 'puyo-pause-overlay-style'
 const RESUME_COUNTDOWN_MS = 650
 const TIMELINE_SEEK_EVENT = 'puyo-timeline-seek-complete'
 const TIMELINE_RESUME_REQUEST_EVENT = 'puyo-timeline-resume-request'
 const TIMELINE_RESUME_CANCEL_EVENT = 'puyo-timeline-resume-cancel'
+const RESUME_ACTIONS: GameplayAction[] = ['left', 'right', 'rotate-left', 'rotate-right', 'soft-drop', 'hard-drop']
 
 let manuallyPaused = false
 let timelineAwaitingInput = false
@@ -15,6 +18,18 @@ let pendingResumeEvent: { key: string; code: string; ctrlKey: boolean; shiftKey:
 function isGameplayBlocked(): boolean {
   if (document.querySelector('.direct-editor-overlay, .keybind-modal-backdrop')) return true
   return Array.from(document.querySelectorAll('.mode')).some((node) => node.textContent?.trim().toLowerCase() === 'replay')
+}
+
+function isConfiguredGameplayKey(event: KeyboardEvent): boolean {
+  if (event.repeat || event.ctrlKey || event.shiftKey || event.altKey || event.metaKey) return false
+  const target = event.target as HTMLElement | null
+  if (target?.matches('input, textarea, select, [contenteditable="true"]')) return false
+
+  const keybinds = loadKeybinds()
+  return RESUME_ACTIONS.some((action) => {
+    const slots = keybinds[action]
+    return slots[0] === event.code || slots[1] === event.code
+  })
 }
 
 function ensureOverlay(): HTMLElement {
@@ -153,39 +168,65 @@ function install(): void {
   })
 
   window.addEventListener('keydown', (event) => {
-    if (syntheticResume || event.code !== 'KeyF' || event.repeat) return
-    if (event.ctrlKey || event.shiftKey || event.altKey || event.metaKey) return
+    if (syntheticResume || event.repeat) return
     if (isGameplayBlocked()) return
 
-    event.preventDefault()
-    event.stopImmediatePropagation()
+    if (event.code === 'KeyF') {
+      if (event.ctrlKey || event.shiftKey || event.altKey || event.metaKey) return
 
-    if (timelineAwaitingInput) {
-      // Timeline seeks are also resumable with F. Clear the gameplay-key
-      // waiting state so a later gameplay key cannot start a second countdown.
-      window.dispatchEvent(new Event(TIMELINE_RESUME_CANCEL_EVENT))
-      timelineAwaitingInput = false
+      event.preventDefault()
+      event.stopImmediatePropagation()
+
+      if (timelineAwaitingInput) {
+        // Timeline seeks are also resumable with F. Clear the gameplay-key
+        // waiting state so a later gameplay key cannot start a second countdown.
+        window.dispatchEvent(new Event(TIMELINE_RESUME_CANCEL_EVENT))
+        timelineAwaitingInput = false
+        startResumeCountdown()
+        return
+      }
+
+      if (!manuallyPaused) {
+        manuallyPaused = true
+        setOverlay('Pause')
+        // Re-dispatch the original event after the capture handler so App.tsx
+        // performs its existing running=true/false toggle exactly once.
+        syntheticResume = true
+        document.body.dispatchEvent(new KeyboardEvent('keydown', {
+          key: event.key,
+          code: event.code,
+          bubbles: true,
+          cancelable: true,
+        }))
+        syntheticResume = false
+        return
+      }
+
       startResumeCountdown()
       return
     }
 
-    if (!manuallyPaused) {
-      manuallyPaused = true
-      setOverlay('Pause')
-      // Re-dispatch the original event after the capture handler so App.tsx
-      // performs its existing running=true/false toggle exactly once.
-      syntheticResume = true
-      document.body.dispatchEvent(new KeyboardEvent('keydown', {
+    // Both kinds of Pause (manual F-pause and timeline-seek pause) can also
+    // be resumed by any configured gameplay key. Keep that key and replay it
+    // after the same countdown so the intended move is not lost.
+    if ((manuallyPaused || timelineAwaitingInput) && isConfiguredGameplayKey(event)) {
+      event.preventDefault()
+      event.stopImmediatePropagation()
+
+      if (timelineAwaitingInput) {
+        window.dispatchEvent(new Event(TIMELINE_RESUME_CANCEL_EVENT))
+        timelineAwaitingInput = false
+      }
+
+      startResumeCountdown({
         key: event.key,
         code: event.code,
-        bubbles: true,
-        cancelable: true,
-      }))
-      syntheticResume = false
-      return
+        ctrlKey: event.ctrlKey,
+        shiftKey: event.shiftKey,
+        altKey: event.altKey,
+        metaKey: event.metaKey,
+      })
     }
-
-    startResumeCountdown()
   }, true)
 
   window.addEventListener('click', (event) => {
