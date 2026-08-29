@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { decreaseFallSpeed, getFallSpeedMultiplier, increaseFallSpeed, subscribeFallSpeed } from '../game/fall-speed'
 import { formatKeyCode, loadKeybinds } from '../game/keybinds'
+import { IncomingGarbagePreview } from './IncomingGarbagePreview'
 
 function firstOrFallback(codes: string[], fallback: string): string {
   return codes.find(Boolean) ?? fallback
@@ -81,19 +82,22 @@ export function FallSpeedControl() {
     return () => window.removeEventListener('storage', updateLabels)
   }, [])
 
-  if (!position) return null
+  if (!position) return <IncomingGarbagePreview />
 
   return (
-    <div
-      className="fall-speed-control"
-      aria-label="落下速度"
-      style={{ left: position.left, top: position.top }}
-    >
-      <div className="fall-speed-label">落下速度</div>
-      <strong>{speed.toFixed(1)}×</strong>
-      <span>Shift + {keyLabels.faster} 速く</span>
-      <span>Shift + {keyLabels.slower} 遅く</span>
-      <small>0.2× ～ 2.0×</small>
-    </div>
+    <>
+      <div
+        className="fall-speed-control"
+        aria-label="落下速度"
+        style={{ left: position.left, top: position.top }}
+      >
+        <div className="fall-speed-label">落下速度</div>
+        <strong>{speed.toFixed(1)}×</strong>
+        <span>Shift + {keyLabels.faster} 速く</span>
+        <span>Shift + {keyLabels.slower} 遅く</span>
+        <small>0.2× ～ 2.0×</small>
+      </div>
+      <IncomingGarbagePreview />
+    </>
   )
 }
