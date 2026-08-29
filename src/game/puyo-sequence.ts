@@ -21,6 +21,8 @@ export interface PuyoSequenceAnalysis {
 }
 
 const debugStates: Array<PuyoSequenceDebugState | undefined> = [undefined, undefined]
+let implicitSeed = 0
+let implicitSeedUses = 0
 
 function normalizeSeed(seed: number): number {
   return (Math.floor(seed) >>> 0) || 0x6d2b79f5
@@ -45,6 +47,20 @@ function randomSeed(): number {
     return normalizeSeed(value[0])
   }
   return normalizeSeed(Math.floor(Math.random() * 0x100000000))
+}
+
+/**
+ * createPlayer() is called once per local Player when a new GameState is created.
+ * Keep two consecutive implicit sequence allocations on the same seed so the
+ * two Players receive the exact same deterministic sequence. The seed advances
+ * after the pair has been allocated, so a later new game still gets a fresh
+ * sequence.
+ */
+function nextImplicitSeed(): number {
+  if (implicitSeedUses === 0) implicitSeed = randomSeed()
+  const seed = implicitSeed
+  implicitSeedUses = (implicitSeedUses + 1) % 2
+  return seed
 }
 
 function shuffle<T>(items: T[], random: () => number): void {
@@ -98,8 +114,9 @@ function generateRecoverySequence(seed = randomSeed()): Pair[] {
   }))
 }
 
-export function createPuyoSequence(seed = randomSeed()): PuyoSequenceDebugState {
-  return { seed: normalizeSeed(seed), sequence: generatePuyoSequence(seed), index: 0 }
+export function createPuyoSequence(seed?: number): PuyoSequenceDebugState {
+  const actualSeed = seed === undefined ? nextImplicitSeed() : seed
+  return { seed: normalizeSeed(actualSeed), sequence: generatePuyoSequence(actualSeed), index: 0 }
 }
 
 export function nextSequencePair(state: PuyoSequenceDebugState): { pair: Pair; state: PuyoSequenceDebugState } {
