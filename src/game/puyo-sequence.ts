@@ -47,9 +47,9 @@ function shuffle<T>(items: T[], random: () => number): void {
 }
 
 /**
- * Generate one 128-pair cycle. The cycle contains exactly 64 of each color
- * before the first-two-pair restriction is applied. The restriction only
- * rearranges cells, so the final cycle still has exactly 64 of each color.
+ * Generate one 128-pair cycle. The cycle contains exactly 64 of each color.
+ * The first two pairs are constrained to use at most three colors while
+ * preserving the 64/64/64/64 totals.
  */
 export function generatePuyoSequence(seed = randomSeed()): Pair[] {
   const random = mulberry32(seed)
@@ -57,14 +57,14 @@ export function generatePuyoSequence(seed = randomSeed()): Pair[] {
   for (const color of COLORS) for (let i = 0; i < SEQUENCE_COLOR_COUNT; i += 1) puyos.push(color)
   shuffle(puyos, random)
 
-  // The first two pairs may use at most three colors. If all four colors are
-  // present, exchange the fourth first-four cell with a later cell matching
-  // one of the first three colors. This preserves the 64/64/64/64 totals.
+  // If the first two pairs contain all four colors, replace one of the four
+  // first cells with a later occurrence of one of the other three colors.
+  // This preserves the exact color totals while guaranteeing <= 3 colors.
   const firstColors = new Set(puyos.slice(0, 4))
   if (firstColors.size === 4) {
-    const keep = puyos[0]
-    const replacementIndex = puyos.findIndex((color, index) => index >= 4 && color === keep)
-    if (replacementIndex >= 0) [puyos[0], puyos[replacementIndex]] = [puyos[replacementIndex], puyos[0]]
+    const replacementColor = puyos[0]
+    const replacementIndex = puyos.findIndex((color, index) => index >= 4 && color !== puyos[3] && color === replacementColor)
+    if (replacementIndex >= 0) [puyos[3], puyos[replacementIndex]] = [puyos[replacementIndex], puyos[3]]
   }
 
   return Array.from({ length: SEQUENCE_PAIRS }, (_, index) => ({
