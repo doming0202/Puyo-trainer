@@ -10,3 +10,40 @@
 .context-dot.garbage-dot {
   background: radial-gradient(circle at 34% 28%, #d6dbe0 0 15%, #9ba3ae 16% 58%, #626b78 59% 100%);
 }
+
+.puyo.garbage-puyo {
+  background: radial-gradient(circle at 34% 28%, #d6dbe0 0 15%, #9ba3ae 16% 58%, #626b78 59% 100%) !important;
+  box-shadow: inset 0 2px 4px rgba(255,255,255,.35), inset 0 -2px 4px rgba(0,0,0,.22), 0 2px 4px rgba(0,0,0,.35);
+}
+
+.puyo.garbage-tier-2 {
+  background:
+    radial-gradient(circle, transparent 0 50%, #4f5864 51% 59%, transparent 60%),
+    radial-gradient(circle at 34% 28%, #d6dbe0 0 15%, #9ba3ae 16% 58%, #626b78 59% 100%) !important;
+}
+
+.puyo.garbage-tier-3 {
+  background:
+    linear-gradient(#4f5864,#4f5864) center/58% 2px no-repeat,
+    linear-gradient(90deg,#4f5864,#4f5864) center/2px 58% no-repeat,
+    radial-gradient(circle at 34% 28%, #d6dbe0 0 15%, #9ba3ae 16% 58%, #626b78 59% 100%) !important;
+}
+
+.puyo.garbage-tier-4 {
+  background:
+    linear-gradient(30deg, transparent 42%, #4f5864 43% 50%, transparent 51%),
+    linear-gradient(150deg, transparent 42%, #4f5864 43% 50%, transparent 51%),
+    linear-gradient(90deg, transparent 42%, #4f5864 43% 50%, transparent 51%),
+    radial-gradient(circle at 34% 28%, #d6dbe0 0 15%, #9ba3ae 16% 58%, #626b78 59% 100%) !important;
+}
+
+.puyo.garbage-tier-5 {
+  background:
+    radial-gradient(circle at 32% 32%, #4f5864 0 8%, transparent 9%),
+    radial-gradient(circle at 68% 32%, #4f5864 0 8%, transparent 9%),
+    radial-gradient(circle at 32% 68%, #4f5864 0 8%, transparent 9%),
+    radial-gradient(circle at 68% 68%, #4f5864 0 8%, transparent 9%),
+    linear-gradient(#4f5864,#4f5864) center/48% 2px no-repeat,
+    linear-gradient(90deg,#4f5864,#4f5864) center/2px 48% no-repeat,
+    radial-gradient(circle at 34% 28%, #d6dbe0 0 15%, #9ba3ae 16% 58%, #626b78 59% 100%) !important;
+}
