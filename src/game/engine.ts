@@ -64,10 +64,6 @@ function cellAt(player: PlayerState, x: number, y: number): PuyoColor | null {
   return player.hidden[hiddenIndex]?.[x] ?? null
 }
 
-/**
- * Active pairs may temporarily occupy the two rows above the visible field.
- * The axis itself may never enter the uppermost (14th) rotation-only row.
- */
 export function canPlace(player: PlayerState, pair: ActivePair): boolean {
   const cells = cellsOf(pair)
   if (pair.y < -(HIDDEN_ROWS - 1)) return false
@@ -87,17 +83,12 @@ export function movePair(player: PlayerState, dx: number): PlayerState {
 
 export function rotatePair(player: PlayerState, direction: 1 | -1): PlayerState {
   if (!player.alive || player.resolution) return player
-
   const rotation = ((player.current.rotation + direction + 4) % 4) as Rotation
   const candidates = [
     { ...player.current, rotation },
     { ...player.current, rotation, x: player.current.x - 1 },
     { ...player.current, rotation, x: player.current.x + 1 },
   ]
-
-  // At the visible ceiling, real Puyo rules allow the rotating pair to use
-  // the off-screen space when the normal rotation is blocked. This is the
-  // entry point needed for building 13th-row positions without resizing the UI.
   if (player.current.y === 0) {
     candidates.push(
       { ...player.current, rotation, y: -1 },
@@ -105,25 +96,17 @@ export function rotatePair(player: PlayerState, direction: 1 | -1): PlayerState 
       { ...player.current, rotation, x: player.current.x + 1, y: -1 },
     )
   }
-
   const valid = candidates.find((candidate) => canPlace(player, candidate))
-
   if (valid) {
     playRotateSound()
     return { ...player, current: valid, lockElapsedMs: 0, quickTurnArmed: false }
   }
-
   const vertical = player.current.rotation === 0 || player.current.rotation === 2
   if (!vertical) return { ...player, quickTurnArmed: false }
-
   const quickRotation = ((player.current.rotation + 2) % 4) as Rotation
   const quickCandidate = { ...player.current, rotation: quickRotation }
   if (!canPlace(player, quickCandidate)) return { ...player, quickTurnArmed: false }
-
-  if (!player.quickTurnArmed) {
-    return { ...player, quickTurnArmed: true, lockElapsedMs: 0 }
-  }
-
+  if (!player.quickTurnArmed) return { ...player, quickTurnArmed: true, lockElapsedMs: 0 }
   playRotateSound()
   return { ...player, current: quickCandidate, quickTurnArmed: false, lockElapsedMs: 0 }
 }
@@ -131,9 +114,7 @@ export function rotatePair(player: PlayerState, direction: 1 | -1): PlayerState 
 export function stepDown(player: PlayerState): PlayerState {
   if (!player.alive || player.resolution) return player
   const candidate = { ...player.current, y: player.current.y + 1 }
-  if (!canPlace(player, candidate)) {
-    return { ...player, lockElapsedMs: 0, quickTurnArmed: false }
-  }
+  if (!canPlace(player, candidate)) return { ...player, lockElapsedMs: 0, quickTurnArmed: false }
   return { ...player, current: candidate, fallElapsedMs: 0, lockElapsedMs: 0, quickTurnArmed: false }
 }
 
@@ -141,24 +122,15 @@ export function advancePlayer(player: PlayerState, deltaMs: number): PlayerState
   if (!player.alive || player.resolution) return player
   const delta = Math.max(0, deltaMs)
   const candidate = { ...player.current, y: player.current.y + 1 }
-
   if (!canPlace(player, candidate)) {
     const lockElapsedMs = player.lockElapsedMs + delta
     if (lockElapsedMs >= LOCK_DELAY_MS) return beginPlacement(player)
     return { ...player, lockElapsedMs }
   }
-
   const fallElapsedMs = player.fallElapsedMs + delta
   const fallIntervalMs = getFallIntervalMs(FALL_INTERVAL_MS)
   if (fallElapsedMs < fallIntervalMs) return { ...player, fallElapsedMs, lockElapsedMs: 0 }
-
-  return {
-    ...player,
-    current: candidate,
-    fallElapsedMs: fallElapsedMs - fallIntervalMs,
-    lockElapsedMs: 0,
-    quickTurnArmed: false,
-  }
+  return { ...player, current: candidate, fallElapsedMs: fallElapsedMs - fallIntervalMs, lockElapsedMs: 0, quickTurnArmed: false }
 }
 
 export function hardDrop(player: PlayerState): PlayerState {
@@ -180,29 +152,21 @@ function writeCell(board: Board, hidden: HiddenBoard, x: number, y: number, colo
 function beginPlacement(player: PlayerState): PlayerState {
   const board = player.board.map((row) => [...row])
   const hidden = player.hidden.map((row) => [...row])
-  for (const { x, y, color } of cellsOf(player.current)) {
-    if (x >= 0 && x < COLS && y >= -HIDDEN_ROWS && y < ROWS) writeCell(board, hidden, x, y, color)
-  }
+  for (const { x, y, color } of cellsOf(player.current)) if (x >= 0 && x < COLS && y >= -HIDDEN_ROWS && y < ROWS) writeCell(board, hidden, x, y, color)
   return { ...player, board, hidden, resolution: { stage: 'gravity', pendingGroups: [] }, chain: 0, fallElapsedMs: 0, lockElapsedMs: 0, quickTurnArmed: false }
 }
 
 function applyGravityWithOrigins(board: Board, hidden: HiddenBoard): { board: Board; hidden: HiddenBoard; fallingCells: FallingCell[] } {
-  const combined: Board = [
-    ...hidden.map((row) => [...row]),
-    ...board.map((row) => [...row]),
-  ]
+  const combined: Board = [...hidden.map((row) => [...row]), ...board.map((row) => [...row])]
   const result: Board = Array.from({ length: TOTAL_ROWS }, () => Array<Cell>(COLS).fill(null))
   const fallingCells: FallingCell[] = []
-
   result[0] = [...combined[0]]
-
   for (let x = 0; x < COLS; x += 1) {
-    const occupied: Array<{ y: number; color: PuyoColor }> = []
+    const occupied: Array<{ y: number; color: PuyoColor | 5 }> = []
     for (let y = TOTAL_ROWS - 1; y >= 1; y -= 1) {
       const cell = combined[y][x]
-      if (cell !== null) occupied.push({ y, color: cell })
+      if (cell !== null) occupied.push({ y, color: cell as PuyoColor | 5 })
     }
-
     occupied.forEach(({ y: fromCombinedY, color }, index) => {
       const targetCombinedY = TOTAL_ROWS - 1 - index
       result[targetCombinedY][x] = color
@@ -211,32 +175,16 @@ function applyGravityWithOrigins(board: Board, hidden: HiddenBoard): { board: Bo
       if (fromY !== targetY) fallingCells.push({ x, y: targetY, fromY, color })
     })
   }
-
-  return {
-    hidden: result.slice(0, HIDDEN_ROWS),
-    board: result.slice(HIDDEN_ROWS),
-    fallingCells,
-  }
+  return { hidden: result.slice(0, HIDDEN_ROWS), board: result.slice(HIDDEN_ROWS), fallingCells }
 }
 
 export function advanceResolution(player: PlayerState): PlayerState {
   const resolution = player.resolution
   if (!resolution || !player.alive) return player
-
   if (resolution.stage === 'gravity') {
     const { board, hidden, fallingCells } = applyGravityWithOrigins(player.board, player.hidden)
-    return {
-      ...player,
-      board,
-      hidden,
-      resolution: {
-        stage: 'fall',
-        pendingGroups: [],
-        fallingCells,
-      },
-    }
+    return { ...player, board, hidden, resolution: { stage: 'fall', pendingGroups: [], fallingCells } }
   }
-
   if (resolution.stage === 'fall') {
     const groups = findGroups(player.board).filter((group) => group.length >= 4)
     if (groups.length === 0) return finishPlacement(player)
@@ -244,7 +192,6 @@ export function advanceResolution(player: PlayerState): PlayerState {
     playComboSound(chain)
     return { ...player, chain, resolution: { stage: 'clear', pendingGroups: groups } }
   }
-
   const board = player.board.map((row) => [...row])
   let cleared = 0
   for (const group of resolution.pendingGroups) {
@@ -270,7 +217,7 @@ function findGroups(board: Board): Array<Array<{ x: number; y: number }>> {
   for (let y = 0; y < ROWS; y += 1) for (let x = 0; x < COLS; x += 1) {
     const color = board[y][x]
     const key = `${x},${y}`
-    if (color === null || seen.has(key)) continue
+    if (color === null || color === 0 || seen.has(key)) continue
     const queue = [{ x, y }]
     const group: Array<{ x: number; y: number }> = []
     seen.add(key)
@@ -296,7 +243,6 @@ export function updatePlayer(player: PlayerState, action: GameplayAction): Playe
   if (action === 'reset-turn') return resetToTurnStart(player)
   if (action === 'undo') return undoTurnAction(player)
   if (action === 'redo') return redoTurnAction(player)
-
   let next: PlayerState
   switch (action) {
     case 'left': next = movePair(player, -1); break
@@ -306,6 +252,5 @@ export function updatePlayer(player: PlayerState, action: GameplayAction): Playe
     case 'soft-drop': next = stepDown(player); break
     case 'hard-drop': next = hardDrop(player); break
   }
-
   return recordTurnAction(player, next)
 }
