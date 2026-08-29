@@ -39,12 +39,35 @@ function sanitizeState(payload) {
   return payload
 }
 
+function removeMember(socket) {
+  const room = socket.room
+  const member = socket.member
+  if (!room || !member) return
+
+  room.members = room.members.filter(item => item !== member)
+  room.lastActiveAt = Date.now()
+
+  if (room.members.length === 0) {
+    rooms.delete(room.id)
+  } else {
+    broadcast(room, {
+      type: 'presence',
+      studentCount: room.members.filter(item => item.role === 'student').length,
+    })
+  }
+
+  socket.room = null
+  socket.member = null
+}
+
 function handleMessage(socket, raw) {
   let message
   try { message = JSON.parse(raw.toString()) } catch { return send(socket, { type: 'error', message: 'Invalid message' }) }
   if (!message || typeof message.type !== 'string') return
 
   if (message.type === 'create-room') {
+    if (socket.room) removeMember(socket)
+
     const id = roomId()
     const coachToken = token(24)
     const joinToken = token(24)
@@ -68,11 +91,16 @@ function handleMessage(socket, raw) {
   }
 
   if (message.type === 'join-room') {
+    if (socket.room) {
+      return send(socket, { type: 'error', code: 'already-in-room', message: 'すでにルームへ接続しています' })
+    }
+
     const id = typeof message.roomId === 'string' ? message.roomId : ''
     const joinToken = typeof message.joinToken === 'string' ? message.joinToken : ''
     const hostToken = typeof message.hostToken === 'string' ? message.hostToken : ''
     const room = rooms.get(id)
     if (!room || Date.now() - room.lastActiveAt > ROOM_TTL_MS) {
+      if (room) rooms.delete(id)
       return send(socket, { type: 'error', code: 'room-not-found', message: 'ルームが見つかりません' })
     }
 
@@ -102,8 +130,8 @@ function handleMessage(socket, raw) {
     })
     broadcast(room, {
       type: 'presence',
-      studentCount: room.members.filter(item => item.role === 'student').length,
-    })
+      studentCount: room.members.filter(member => member.role === 'student').length,
+    }, socket)
     return
   }
 
@@ -134,13 +162,7 @@ function handleMessage(socket, raw) {
 }
 
 function removeSocket(socket) {
-  const room = socket.room
-  const member = socket.member
-  if (!room || !member) return
-  room.members = room.members.filter(item => item !== member)
-  room.lastActiveAt = Date.now()
-  if (room.members.length === 0) rooms.delete(room.id)
-  else broadcast(room, { type: 'presence', studentCount: room.members.filter(item => item.role === 'student').length })
+  removeMember(socket)
 }
 
 function serveStatic(request, response) {
