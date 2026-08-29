@@ -286,7 +286,6 @@ export function advanceResolution(player: PlayerState): ResolutionAdvanceResult 
     player: {
       ...player,
       board,
-      score,
       incomingGarbage: remainingIncoming,
       garbage: remainingIncoming,
       resolution: { stage: 'gravity', pendingGroups: [] },
