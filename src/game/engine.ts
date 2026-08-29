@@ -267,8 +267,9 @@ function findGroups(board: Board): Array<Array<{ x: number; y: number }>> {
   }
   return groups
 }
-export type GameplayAction = 'left' | 'right' | 'rotate-left' | 'rotate-right' | 'soft-drop' | 'hard-drop' | 'reset-turn' | 'undo' | 'redo'
+export type GameplayAction = 'left' | 'right' | 'rotate-left' | 'rotate-right' | 'soft-drop' | 'hard-drop' | 'reset-turn' | 'undo' | 'redo' | 'toggle-player-pause'
 export function updatePlayer(player: PlayerState, action: GameplayAction): PlayerState {
+  if (action === 'toggle-player-pause') return { ...player, paused: !player.paused }
   if (action === 'reset-turn') return resetToTurnStart(player)
   if (action === 'undo') return undoTurnAction(player)
   if (action === 'redo') return redoTurnAction(player)
@@ -280,6 +281,7 @@ export function updatePlayer(player: PlayerState, action: GameplayAction): Playe
     case 'rotate-right': next = rotatePair(player, 1); break
     case 'soft-drop': next = stepDown(player); break
     case 'hard-drop': next = hardDrop(player); break
+    default: next = player; break
   }
   return recordTurnAction(player, next)
 }
