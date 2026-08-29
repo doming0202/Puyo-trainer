@@ -2,6 +2,7 @@ import { playComboSound, playMoveSound, playRotateSound } from './sound'
 import { recordTurnAction, redoTurnAction, resetToTurnStart, startNewTurn, undoTurnAction } from './history'
 import { COLS, HIDDEN_ROWS, ROWS, TOTAL_ROWS, garbageCellForTier, isGarbageCell, type ActivePair, type Board, type Cell, type FallingCell, type GameState, type HiddenBoard, type Pair, type PlayerState, type PuyoColor, type Rotation, type GarbageTier } from './types'
 import { getFallIntervalMs } from './fall-speed'
+import { createPuyoSequence, nextSequencePair, type PuyoSequenceDebugState } from './puyo-sequence'
 
 export const COLORS: PuyoColor[] = [1, 2, 3, 4]
 export const FALL_INTERVAL_MS = 900
@@ -15,16 +16,37 @@ export function emptyHiddenBoard(): HiddenBoard {
   return Array.from({ length: HIDDEN_ROWS }, () => Array<Cell>(COLS).fill(null))
 }
 
+/** Legacy helper. New games use the deterministic practical sequence generator. */
 export function randomPair(): Pair { return { axis: randomColor(), child: randomColor() } }
 function randomColor(): PuyoColor { return COLORS[Math.floor(Math.random() * COLORS.length)] }
 
+function takePair(state: PuyoSequenceDebugState): { pair: Pair; state: PuyoSequenceDebugState } {
+  return nextSequencePair(state)
+}
+
+function createInitialSequence(): PuyoSequenceDebugState {
+  return createPuyoSequence()
+}
+
 export function createPlayer(controlMode: PlayerState['controlMode'] = 'human'): PlayerState {
-  const first = randomPair()
+  let sequenceState = createInitialSequence()
+  const first = takePair(sequenceState)
+  sequenceState = first.state
+  const nextPairs: Pair[] = []
+  for (let i = 0; i < 4; i += 1) {
+    const result = takePair(sequenceState)
+    nextPairs.push(result.pair)
+    sequenceState = result.state
+  }
+
   const base: Omit<PlayerState, 'turnStart' | 'undoStack' | 'redoStack'> = {
     board: emptyBoard(),
     hidden: emptyHiddenBoard(),
-    current: spawnPair(first),
-    next: [randomPair(), randomPair(), randomPair(), randomPair()],
+    current: spawnPair(first.pair),
+    next: nextPairs,
+    puyoSequence: sequenceState.sequence,
+    puyoSequenceIndex: sequenceState.index,
+    puyoSequenceSeed: sequenceState.seed,
     incomingGarbage: 0,
     garbage: 0,
     score: 0,
@@ -285,9 +307,6 @@ export function advanceResolution(player: PlayerState): ResolutionAdvanceResult 
   const score = player.score + cleared * 10 * Math.max(1, player.chain + colorBonus)
   const attack = calculateGarbageAttack(cleared, player.chain, resolution.pendingGroups.length)
 
-  // Phase 3: own incoming garbage is canceled before any remaining attack
-  // is sent to the opponent. This also works symmetrically when both players
-  // attack during the same resolution tick.
   const incomingGarbage = Math.max(0, Math.floor(player.incomingGarbage))
   const canceled = Math.min(incomingGarbage, attack)
   const remainingIncoming = incomingGarbage - canceled
@@ -297,6 +316,7 @@ export function advanceResolution(player: PlayerState): ResolutionAdvanceResult 
     player: {
       ...player,
       board,
+      score,
       incomingGarbage: remainingIncoming,
       garbage: remainingIncoming,
       resolution: { stage: 'gravity', pendingGroups: [] },
@@ -306,16 +326,35 @@ export function advanceResolution(player: PlayerState): ResolutionAdvanceResult 
 }
 
 function finishPlacement(player: PlayerState): PlayerState {
-  // Phase 2: the current turn is fully resolved first; then any
-  // accumulated incoming garbage lands before the next turn starts.
   const withGarbage = applyIncomingGarbage(player)
   if (!withGarbage.alive) return withGarbage
 
-  const nextPair = withGarbage.next[0] ?? randomPair()
-  const next = [...withGarbage.next.slice(1), randomPair()]
-  const nextCurrent = spawnPair(nextPair)
+  const sequenceState: PuyoSequenceDebugState = {
+    seed: withGarbage.puyoSequenceSeed,
+    sequence: withGarbage.puyoSequence,
+    index: withGarbage.puyoSequenceIndex,
+  }
+  const currentResult = takePair(sequenceState)
+  let nextSequenceState = currentResult.state
+  const next: Pair[] = [...withGarbage.next.slice(1)]
+  const appended = takePair(nextSequenceState)
+  next.push(appended.pair)
+  nextSequenceState = appended.state
+
+  const nextCurrent = spawnPair(withGarbage.next[0] ?? currentResult.pair)
   if (!canPlace(withGarbage, nextCurrent)) return { ...withGarbage, alive: false, resolution: undefined, fallElapsedMs: 0, lockElapsedMs: 0, quickTurnArmed: false }
-  return startNewTurn({ ...withGarbage, current: nextCurrent, next, resolution: undefined, fallElapsedMs: 0, lockElapsedMs: 0, quickTurnArmed: false })
+  return startNewTurn({
+    ...withGarbage,
+    current: nextCurrent,
+    next,
+    puyoSequence: nextSequenceState.sequence,
+    puyoSequenceIndex: nextSequenceState.index,
+    puyoSequenceSeed: nextSequenceState.seed,
+    resolution: undefined,
+    fallElapsedMs: 0,
+    lockElapsedMs: 0,
+    quickTurnArmed: false,
+  })
 }
 
 function findGroups(board: Board): Array<Array<{ x: number; y: number }>> {
