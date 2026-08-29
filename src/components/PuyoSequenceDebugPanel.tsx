@@ -8,6 +8,15 @@ const COLORS: PuyoColor[] = [1, 2, 3, 4]
 const COLOR_NAMES: Record<PuyoColor, string> = { 1: '赤', 2: '青', 3: '緑', 4: '紫' }
 const COLOR_MARKS: Record<PuyoColor, string> = { 1: '🔴', 2: '🔵', 3: '🟢', 4: '🟣' }
 const DEBUG_HOTKEY = 'Ctrl + Shift + F12'
+const BATCH_SAMPLES = 1000
+
+type BatchMetrics = {
+  openingThreeOrLess: number
+  averagePairSameColor: number
+  averageAdjacentSameColor: number
+  averageSpread8: number
+  averageSpread16: number
+}
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 0xffffffff) >>> 0
@@ -17,10 +26,41 @@ function PairView({ pair }: { pair: Pair }) {
   return <span className="sequence-pair"><b>{COLOR_MARKS[pair.axis]}</b><b>{COLOR_MARKS[pair.child]}</b></span>
 }
 
+function runBatch(generator: (seed: number) => Pair[]): BatchMetrics {
+  let openingThreeOrLess = 0
+  let pairSameColor = 0
+  let adjacentSameColor = 0
+  let spread8 = 0
+  let spread16 = 0
+
+  for (let sample = 0; sample < BATCH_SAMPLES; sample += 1) {
+    const analysis = analyzePuyoSequence(generator(sample + 1))
+    if (analysis.firstTwoColorCount <= 3) openingThreeOrLess += 1
+    pairSameColor += analysis.pairSameColorCount
+    adjacentSameColor += analysis.adjacentSameColorCount
+    spread8 += analysis.windowSpread[8]
+    spread16 += analysis.windowSpread[16]
+  }
+
+  return {
+    openingThreeOrLess,
+    averagePairSameColor: pairSameColor / BATCH_SAMPLES,
+    averageAdjacentSameColor: adjacentSameColor / BATCH_SAMPLES,
+    averageSpread8: spread8 / BATCH_SAMPLES,
+    averageSpread16: spread16 / BATCH_SAMPLES,
+  }
+}
+
+function format(value: number): string {
+  return value.toFixed(2)
+}
+
 export function PuyoSequenceDebugPanel() {
   const [open, setOpen] = useState(false)
   const [seedInput, setSeedInput] = useState('')
   const [state, setState] = useState<PuyoSequenceDebugState>(() => createPuyoSequence())
+  const [batch, setBatch] = useState<{ baseline: BatchMetrics; reference: BatchMetrics } | null>(null)
+  const [batchRunning, setBatchRunning] = useState(false)
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -46,6 +86,16 @@ export function PuyoSequenceDebugPanel() {
     const next = createPuyoSequence(seed)
     setState(next)
     setSeedInput(String(next.seed))
+  }
+
+  const runBatchDiagnostics = () => {
+    setBatchRunning(true)
+    window.setTimeout(() => {
+      const baseline = runBatch((seed) => createPuyoSequence(seed).sequence)
+      const reference = runBatch(generateReferencePuyoSequence)
+      setBatch({ baseline, reference })
+      setBatchRunning(false)
+    }, 0)
   }
 
   if (!open) return null
@@ -100,6 +150,20 @@ export function PuyoSequenceDebugPanel() {
         <span>16個窓 最大差</span><b>{analysis.windowSpread[16]} / {referenceAnalysis.windowSpread[16]}</b>
       </div>
       <small>参考モデルは公開情報を構造化した開発用モデルで、実機の完全再現ではありません。</small>
+    </div>
+
+    <div className="debug-batch">
+      <div className="debug-analysis-title">大量サンプル比較</div>
+      <button onClick={runBatchDiagnostics} disabled={batchRunning}>{batchRunning ? '計算中…' : `${BATCH_SAMPLES} Seedで比較`}</button>
+      {batch && <div className="debug-analysis-grid">
+        <span></span><b>現在方式</b><b>参考モデル</b>
+        <span>初手3色以内</span><b>{format(batch.baseline.openingThreeOrLess / BATCH_SAMPLES * 100)}%</b><b>{format(batch.reference.openingThreeOrLess / BATCH_SAMPLES * 100)}%</b>
+        <span>同色ツモ / 手</span><b>{format(batch.baseline.averagePairSameColor)}</b><b>{format(batch.reference.averagePairSameColor)}</b>
+        <span>隣接同色 / 256個</span><b>{format(batch.baseline.averageAdjacentSameColor)}</b><b>{format(batch.reference.averageAdjacentSameColor)}</b>
+        <span>8個窓 最大差</span><b>{format(batch.baseline.averageSpread8)}</b><b>{format(batch.reference.averageSpread8)}</b>
+        <span>16個窓 最大差</span><b>{format(batch.baseline.averageSpread16)}</b><b>{format(batch.reference.averageSpread16)}</b>
+      </div>}
+      <small>1000 Seedを同じ条件で生成して平均を比較します。参考モデルは公式実装の再現ではありません。</small>
     </div>
 
     <div className="debug-sequence-grid">
