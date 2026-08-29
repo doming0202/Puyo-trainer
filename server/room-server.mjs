@@ -22,6 +22,10 @@ function roomId() {
   return randomBytes(8).toString('base64url')
 }
 
+function memberId() {
+  return token(12)
+}
+
 function send(socket, message) {
   if (socket.readyState === socket.OPEN) socket.send(JSON.stringify(message))
 }
@@ -34,6 +38,26 @@ function broadcast(room, message, except) {
   }
 }
 
+function focusState(room) {
+  return [...room.focus]
+}
+
+function broadcastFocusState(room) {
+  broadcast(room, { type: 'focus-state', focus: focusState(room) })
+}
+
+function releaseMemberFocus(room, member, notify = true) {
+  let changed = false
+  for (let index = 0; index < room.focus.length; index += 1) {
+    if (room.focus[index] === member.id) {
+      room.focus[index] = null
+      changed = true
+    }
+  }
+  if (changed && notify) broadcastFocusState(room)
+  return changed
+}
+
 function sanitizeState(payload) {
   if (!payload || typeof payload !== 'object') return null
   return payload
@@ -44,12 +68,14 @@ function removeMember(socket) {
   const member = socket.member
   if (!room || !member) return
 
+  const focusChanged = releaseMemberFocus(room, member, false)
   room.members = room.members.filter(item => item !== member)
   room.lastActiveAt = Date.now()
 
   if (room.members.length === 0) {
     rooms.delete(room.id)
   } else {
+    if (focusChanged) broadcastFocusState(room)
     broadcast(room, {
       type: 'presence',
       studentCount: room.members.filter(item => item.role === 'student').length,
@@ -79,14 +105,23 @@ function handleMessage(socket, raw) {
       lastActiveAt: Date.now(),
       state: null,
       liveState: null,
+      focus: [null, null],
       members: [],
     }
-    const member = { socket, role: 'coach' }
+    const member = { socket, id: memberId(), role: 'coach' }
     room.members.push(member)
     socket.room = room
     socket.member = member
     rooms.set(id, room)
-    send(socket, { type: 'room-created', roomId: id, role: 'coach', joinToken, hostToken: coachToken })
+    send(socket, {
+      type: 'room-created',
+      roomId: id,
+      role: 'coach',
+      memberId: member.id,
+      joinToken,
+      hostToken: coachToken,
+      focus: focusState(room),
+    })
     return
   }
 
@@ -115,7 +150,7 @@ function handleMessage(socket, raw) {
 
     if (!role) return send(socket, { type: 'error', code: 'invalid-token', message: '招待リンクが無効です' })
 
-    const member = { socket, role }
+    const member = { socket, id: memberId(), role }
     room.members.push(member)
     room.lastActiveAt = Date.now()
     socket.room = room
@@ -124,14 +159,17 @@ function handleMessage(socket, raw) {
       type: 'room-joined',
       roomId: room.id,
       role,
+      memberId: member.id,
       studentCount: room.members.filter(item => item.role === 'student').length,
       state: role === 'student' ? room.state : null,
       liveState: role === 'student' ? room.liveState : null,
+      focus: focusState(room),
     })
     broadcast(room, {
       type: 'presence',
       studentCount: room.members.filter(member => member.role === 'student').length,
     }, socket)
+    broadcastFocusState(room)
     return
   }
 
@@ -139,6 +177,41 @@ function handleMessage(socket, raw) {
   const member = socket.member
   if (!room || !member) return
   room.lastActiveAt = Date.now()
+
+  if (message.type === 'request-focus') {
+    const playerIndex = Number(message.playerIndex)
+    if (!Number.isInteger(playerIndex) || playerIndex < 0 || playerIndex > 1) {
+      return send(socket, { type: 'focus-denied', playerIndex: null, reason: 'invalid-player' })
+    }
+
+    const owner = room.focus[playerIndex]
+    if (owner && owner !== member.id) {
+      return send(socket, {
+        type: 'focus-denied',
+        playerIndex,
+        reason: 'occupied',
+        ownerRole: room.members.find(item => item.id === owner)?.role || null,
+      })
+    }
+
+    for (let index = 0; index < room.focus.length; index += 1) {
+      if (index !== playerIndex && room.focus[index] === member.id) room.focus[index] = null
+    }
+    room.focus[playerIndex] = member.id
+
+    send(socket, { type: 'focus-granted', playerIndex, focus: focusState(room) })
+    broadcastFocusState(room)
+    return
+  }
+
+  if (message.type === 'release-focus') {
+    const playerIndex = Number(message.playerIndex)
+    if (Number.isInteger(playerIndex) && playerIndex >= 0 && playerIndex <= 1 && room.focus[playerIndex] === member.id) {
+      room.focus[playerIndex] = null
+      broadcastFocusState(room)
+    }
+    return
+  }
 
   if (message.type === 'state' && member.role === 'coach') {
     const state = sanitizeState(message.state)
