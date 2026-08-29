@@ -1,9 +1,6 @@
 name: fix-realtime-match
 
-on:
-  push:
-    paths:
-      - .github/workflows/fix-realtime-match.yml
+on: push
 
 permissions:
   contents: write
@@ -21,15 +18,12 @@ jobs:
         run: |
           from pathlib import Path
           import re
-
-          # room-client.ts: action relay is valid for coach and student; sequence is reconstructed locally.
           p = Path('src/game/room-client.ts')
           text = p.read_text(encoding='utf-8')
           text = text.replace("export type RoomPlayerState = TurnState", "export type RoomPlayerState = Omit<TurnState, 'puyoSequence'>", 1)
           text = text.replace("if (this._role !== 'student') return\n    this.send({ type: 'student-action', playerIndex, action })", "if (!this._role) return\n    this.send({ type: 'student-action', playerIndex, action })", 1)
           p.write_text(text, encoding='utf-8')
 
-          # server/room-server.mjs: accept action relay from either participant, with focus authorization.
           p = Path('server/room-server.mjs')
           text = p.read_text(encoding='utf-8')
           pattern = re.compile(r"  if \(message\.type === 'student-action'\) \{.*?\n  \}\n\n  if \(message\.type === 'player-state'", re.S)
@@ -56,7 +50,6 @@ jobs:
               raise SystemExit('server action block not found')
           p.write_text(text, encoding='utf-8')
 
-          # RoomPanel.tsx: action-only realtime path; full snapshots are only used while stopped/replaying.
           p = Path('src/components/RoomPanel.tsx')
           text = p.read_text(encoding='utf-8')
           text = text.replace("const LIVE_INTERVAL_MS = 500", "const LIVE_INTERVAL_MS = 1000", 1)
@@ -82,11 +75,7 @@ jobs:
       const currentReplay = replayRef.current
       const currentElapsed = Math.max(0, timelineRef.current)
       if (!gameRef.current.running && (gameRef.current.tick === 0 || Date.now() - lastSnapshotSyncRef.current >= SNAPSHOT_INTERVAL_MS)) {
-        client.sendState({
-          game: compactGame(gameRef.current),
-          replay: compactReplay(currentReplay),
-          elapsedMs: currentElapsed,
-        })
+        client.sendState({ game: compactGame(gameRef.current), replay: compactReplay(currentReplay), elapsedMs: currentElapsed })
         lastSnapshotSyncRef.current = Date.now()
       }
       if (!gameRef.current.running || currentReplay.playing) {
@@ -117,7 +106,6 @@ jobs:
               raise SystemExit('RoomPanel sync interval not found')
           p.write_text(text, encoding='utf-8')
 
-          # App.tsx: replay sync cannot overwrite a live game; player corrections never reset a running clock.
           p = Path('src/App.tsx')
           text = p.read_text(encoding='utf-8')
           live_pattern = re.compile(r"  const applyRemoteRoomLiveState = useCallback\(\(state: SharedRoomLiveState\) => \{.*?\n  \}, \[resetClock\]\)\n", re.S)
@@ -149,20 +137,10 @@ jobs:
     const puyoSequence = currentPlayer.puyoSequenceSeed === state.player.puyoSequenceSeed
       ? currentPlayer.puyoSequence
       : generatePuyoSequence(state.player.puyoSequenceSeed)
-    const nextPlayer: PlayerState = {
-      ...currentPlayer,
-      ...state.player,
-      puyoSequence,
-    }
+    const nextPlayer: PlayerState = { ...currentPlayer, ...state.player, puyoSequence }
     const players = [...current.players] as [PlayerState, PlayerState]
     players[state.playerIndex] = nextPlayer
-    const nextGame = {
-      ...current,
-      players,
-      activePlayer: state.activePlayer,
-      running: state.running,
-      tick: state.tick,
-    }
+    const nextGame = { ...current, players, activePlayer: state.activePlayer, running: state.running, tick: state.tick }
     gameRef.current = nextGame
     setGame(nextGame)
     if (current.running !== state.running) resetClock(state.elapsedMs)
@@ -171,7 +149,6 @@ jobs:
           text, count = player_pattern.subn(player_replacement, text, count=1)
           if count != 1:
               raise SystemExit('App player state handler not found')
-          # Remove the remote-action echo that can create action loops.
           echo = "      window.dispatchEvent(new CustomEvent('puyo-room-local-action', { detail: { playerIndex: detail.playerIndex, action: detail.action } }))\n"
           if echo not in text:
               raise SystemExit('remote action echo not found')
@@ -181,16 +158,10 @@ jobs:
       - name: Cleanup temporary workflows
         shell: bash
         run: |
-          rm -f .github/workflows/fix-realtime-room-sync-v2.yml
-          rm -f .github/workflows/fix-realtime-room-sync.yml
-          rm -f .github/workflows/fix-room-panel-syntax.yml
-          rm -f .github/workflows/fix-room-sync-order.yml
-          rm -f .github/workflows/fix-room-sync-player-index.yml
-          rm -f .github/workflows/implement-lightweight-room-state-sync.yml
-          rm -f .github/workflows/verify-room-sync.yml
-          rm -f .github/workflows/fix-room-sync-lag.yml
-          rm -f .github/workflows/fix-room-sync-lag-v2.yml
-          rm -f .github/workflows/fix-realtime-match.yml
+          rm -f .github/workflows/fix-realtime-room-sync.yml .github/workflows/fix-realtime-room-sync-v2.yml
+          rm -f .github/workflows/fix-room-panel-syntax.yml .github/workflows/fix-room-sync-order.yml .github/workflows/fix-room-sync-player-index.yml
+          rm -f .github/workflows/implement-lightweight-room-state-sync.yml .github/workflows/verify-room-sync.yml
+          rm -f .github/workflows/fix-room-sync-lag.yml .github/workflows/fix-room-sync-lag-v2.yml
 
       - name: Commit
         shell: bash
