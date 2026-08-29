@@ -1,6 +1,6 @@
 import { playComboSound, playMoveSound, playRotateSound } from './sound'
 import { recordTurnAction, redoTurnAction, resetToTurnStart, startNewTurn, undoTurnAction } from './history'
-import { COLS, GARBAGE_CELL, HIDDEN_ROWS, ROWS, TOTAL_ROWS, isGarbageCell, type ActivePair, type Board, type Cell, type FallingCell, type GameState, type HiddenBoard, type Pair, type PlayerState, type PuyoColor, type Rotation } from './types'
+import { COLS, HIDDEN_ROWS, ROWS, TOTAL_ROWS, garbageCellForTier, isGarbageCell, type ActivePair, type Board, type Cell, type FallingCell, type GameState, type HiddenBoard, type Pair, type PlayerState, type PuyoColor, type Rotation, type GarbageTier } from './types'
 import { getFallIntervalMs } from './fall-speed'
 
 export const COLORS: PuyoColor[] = [1, 2, 3, 4]
@@ -172,6 +172,16 @@ function applyGravityWithOrigins(board: Board, hidden: HiddenBoard): { board: Bo
   return { hidden: result.slice(0, HIDDEN_ROWS), board: result.slice(HIDDEN_ROWS), fallingCells }
 }
 
+/** Puyo Trainer's original garbage progression. Values are deliberately independent of any existing game's tiers. */
+export function getGarbageTierForCount(count: number): GarbageTier {
+  const pending = Math.max(0, Math.floor(count))
+  if (pending >= 48) return 5
+  if (pending >= 24) return 4
+  if (pending >= 12) return 3
+  if (pending >= 6) return 2
+  return 1
+}
+
 function applyPendingGarbage(player: PlayerState): PlayerState {
   const pending = Math.max(0, Math.floor(player.garbage))
   if (pending === 0) return player
@@ -181,6 +191,7 @@ function applyPendingGarbage(player: PlayerState): PlayerState {
   const fullRows = Math.floor(pending / COLS)
   const remainder = pending % COLS
   const placementColumns: number[] = []
+  const garbageCell = garbageCellForTier(getGarbageTierForCount(pending))
   for (let row = 0; row < fullRows; row += 1) for (let x = 0; x < COLS; x += 1) placementColumns.push(x)
   for (let x = 0; x < remainder; x += 1) placementColumns.push(x)
 
@@ -188,7 +199,7 @@ function applyPendingGarbage(player: PlayerState): PlayerState {
     for (let y = ROWS - 1; y >= -HIDDEN_ROWS; y -= 1) {
       const cell = y >= 0 ? board[y][x] : hidden[y + HIDDEN_ROWS][x]
       if (cell !== null) continue
-      writeCell(board, hidden, x, y, GARBAGE_CELL)
+      writeCell(board, hidden, x, y, garbageCell)
       return true
     }
     return false
