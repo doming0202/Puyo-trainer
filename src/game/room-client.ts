@@ -118,7 +118,10 @@ export class RoomClient {
         if (message.type === 'room-created' || message.type === 'room-joined') {
           this._role = message.role
           this._roomId = message.roomId
-          if (message.type === 'room-created' && message.hostToken) storeHostToken(message.roomId, message.hostToken)
+          if (message.type === 'room-created') {
+            if (message.hostToken) storeHostToken(message.roomId, message.hostToken)
+            storeRoomSession(message.roomId, message.joinToken)
+          }
           if (message.type === 'room-joined') this._studentCount = message.studentCount
         }
         if (message.type === 'presence') this._studentCount = message.studentCount
