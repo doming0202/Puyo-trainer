@@ -12,6 +12,7 @@ import './timeline-resume'
 import './timeline-branch'
 import './fall-speed.css'
 import './garbage.css'
+import './garbage-marker-compat'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
