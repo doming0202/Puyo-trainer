@@ -1,6 +1,6 @@
 import { playComboSound, playMoveSound, playRotateSound } from './sound'
 import { recordTurnAction, redoTurnAction, resetToTurnStart, startNewTurn, undoTurnAction } from './history'
-import { COLS, HIDDEN_ROWS, ROWS, TOTAL_ROWS, type ActivePair, type Board, type FallingCell, type GameState, type HiddenBoard, type Pair, type PlayerState, type PuyoColor, type Rotation } from './types'
+import { COLS, GARBAGE_CELL, HIDDEN_ROWS, ROWS, TOTAL_ROWS, isGarbageCell, type ActivePair, type Board, type Cell, type FallingCell, type GameState, type HiddenBoard, type Pair, type PlayerState, type PuyoColor, type Rotation } from './types'
 import { getFallIntervalMs } from './fall-speed'
 
 export const COLORS: PuyoColor[] = [1, 2, 3, 4]
@@ -14,8 +14,6 @@ export function emptyBoard(): Board {
 export function emptyHiddenBoard(): HiddenBoard {
   return Array.from({ length: HIDDEN_ROWS }, () => Array<Cell>(COLS).fill(null))
 }
-
-type Cell = Board[number][number]
 
 export function randomPair(): Pair { return { axis: randomColor(), child: randomColor() } }
 function randomColor(): PuyoColor { return COLORS[Math.floor(Math.random() * COLORS.length)] }
@@ -56,7 +54,7 @@ export function cellsOf(pair: ActivePair): Array<{ x: number; y: number; color: 
   ]
 }
 
-function cellAt(player: PlayerState, x: number, y: number): PuyoColor | null {
+function cellAt(player: PlayerState, x: number, y: number): Cell {
   if (x < 0 || x >= COLS) return null
   if (y >= 0) return player.board[y]?.[x] ?? null
   const hiddenIndex = y + HIDDEN_ROWS
@@ -140,7 +138,7 @@ export function hardDrop(player: PlayerState): PlayerState {
   return beginPlacement({ ...player, current })
 }
 
-function writeCell(board: Board, hidden: HiddenBoard, x: number, y: number, color: PuyoColor): void {
+function writeCell(board: Board, hidden: HiddenBoard, x: number, y: number, color: PuyoColor | 5): void {
   if (y >= 0 && y < ROWS) {
     board[y][x] = color
     return
@@ -178,6 +176,37 @@ function applyGravityWithOrigins(board: Board, hidden: HiddenBoard): { board: Bo
   return { hidden: result.slice(0, HIDDEN_ROWS), board: result.slice(HIDDEN_ROWS), fallingCells }
 }
 
+function applyPendingGarbage(player: PlayerState): PlayerState {
+  const pending = Math.max(0, Math.floor(player.garbage))
+  if (pending === 0) return player
+
+  const board = player.board.map((row) => [...row])
+  const hidden = player.hidden.map((row) => [...row])
+  const fullRows = Math.floor(pending / COLS)
+  const remainder = pending % COLS
+  const placementColumns: number[] = []
+
+  for (let row = 0; row < fullRows; row += 1) for (let x = 0; x < COLS; x += 1) placementColumns.push(x)
+  for (let x = 0; x < remainder; x += 1) placementColumns.push(x)
+
+  const placeAtTopOfColumn = (x: number): boolean => {
+    for (let y = ROWS - 1; y >= -HIDDEN_ROWS; y -= 1) {
+      const cell = y >= 0 ? board[y][x] : hidden[y + HIDDEN_ROWS][x]
+      if (cell !== null) continue
+      writeCell(board, hidden, x, y, GARBAGE_CELL)
+      return true
+    }
+    return false
+  }
+
+  for (const x of placementColumns) {
+    if (placeAtTopOfColumn(x)) continue
+    return { ...player, board, hidden, garbage: 0, alive: false, resolution: undefined, fallElapsedMs: 0, lockElapsedMs: 0, quickTurnArmed: false }
+  }
+
+  return { ...player, board, hidden, garbage: 0 }
+}
+
 export function advanceResolution(player: PlayerState): PlayerState {
   const resolution = player.resolution
   if (!resolution || !player.alive) return player
@@ -194,9 +223,20 @@ export function advanceResolution(player: PlayerState): PlayerState {
   }
   const board = player.board.map((row) => [...row])
   let cleared = 0
+  const garbageToClear = new Set<string>()
   for (const group of resolution.pendingGroups) {
     cleared += group.length
-    for (const { x, y } of group) board[y][x] = null
+    for (const { x, y } of group) {
+      board[y][x] = null
+      for (const [nx, ny] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]) {
+        if (nx < 0 || nx >= COLS || ny < 0 || ny >= ROWS) continue
+        if (isGarbageCell(board[ny][nx])) garbageToClear.add(`${nx},${ny}`)
+      }
+    }
+  }
+  for (const key of garbageToClear) {
+    const [x, y] = key.split(',').map(Number)
+    board[y][x] = null
   }
   const colorBonus = Math.max(0, resolution.pendingGroups.length - 1) * 3
   const score = player.score + cleared * 10 * Math.max(1, player.chain + colorBonus)
@@ -204,11 +244,13 @@ export function advanceResolution(player: PlayerState): PlayerState {
 }
 
 function finishPlacement(player: PlayerState): PlayerState {
-  const nextPair = player.next[0] ?? randomPair()
-  const next = [...player.next.slice(1), randomPair()]
+  const withGarbage = applyPendingGarbage(player)
+  if (!withGarbage.alive) return withGarbage
+  const nextPair = withGarbage.next[0] ?? randomPair()
+  const next = [...withGarbage.next.slice(1), randomPair()]
   const nextCurrent = spawnPair(nextPair)
-  if (!canPlace(player, nextCurrent)) return { ...player, alive: false, resolution: undefined, fallElapsedMs: 0, lockElapsedMs: 0, quickTurnArmed: false }
-  return startNewTurn({ ...player, current: nextCurrent, next, resolution: undefined, fallElapsedMs: 0, lockElapsedMs: 0, quickTurnArmed: false })
+  if (!canPlace(withGarbage, nextCurrent)) return { ...withGarbage, alive: false, resolution: undefined, fallElapsedMs: 0, lockElapsedMs: 0, quickTurnArmed: false }
+  return startNewTurn({ ...withGarbage, current: nextCurrent, next, resolution: undefined, fallElapsedMs: 0, lockElapsedMs: 0, quickTurnArmed: false })
 }
 
 function findGroups(board: Board): Array<Array<{ x: number; y: number }>> {
@@ -217,7 +259,7 @@ function findGroups(board: Board): Array<Array<{ x: number; y: number }>> {
   for (let y = 0; y < ROWS; y += 1) for (let x = 0; x < COLS; x += 1) {
     const color = board[y][x]
     const key = `${x},${y}`
-    if (color === null || color === 0 || seen.has(key)) continue
+    if (color === null || color === 0 || isGarbageCell(color) || seen.has(key)) continue
     const queue = [{ x, y }]
     const group: Array<{ x: number; y: number }> = []
     seen.add(key)
