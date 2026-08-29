@@ -456,7 +456,19 @@ export default function App() {
   const editableControls: EditControls = { changeCurrentColor, rotateCurrent, changeNext, changeGarbage, setGarbageValue }
 
   const saveCurrentSnapshot = async () => { try { await saveSnapshot(makeSnapshot(game,snapshotTitle,snapshotTags.split(',').map(tag=>tag.trim()))); setSnapshotTitle(''); setSnapshotTags(''); setMessage('局面を保存しました'); await refreshSnapshots(); setLibraryOpen(true) } catch { setMessage('局面の保存に失敗しました') } }
-  const loadSnapshot = (snapshot:Snapshot) => { const restored = cloneGameState(snapshot.state); gameRef.current = restored; setGame(restored); setReplay(createReplay(restored)); setLibraryOpen(false); setEditMode(false); setTurnCopyBackup(null); setMessage(`「${snapshot.title}」を読み込みました`); resetClock(0); setFocusedPlayer(restored.activePlayer) }
+  const loadSnapshot = (snapshot:Snapshot) => {
+    const restored = { ...cloneGameState(snapshot.state), running: false }
+    gameRef.current = restored
+    setGame(restored)
+    setReplay({ ...createReplay(restored), playing: false })
+    setLibraryOpen(false)
+    setEditMode(false)
+    setTurnCopyBackup(null)
+    setMessage(`「${snapshot.title}」を読み込みました`)
+    resetClock(0)
+    setFocusedPlayer(restored.activePlayer)
+    window.dispatchEvent(new Event('puyo-snapshot-loaded'))
+  }
   const removeSnapshot = async (id:string) => { try { await deleteSnapshot(id); await refreshSnapshots(); setMessage('局面を削除しました') } catch { setMessage('局面の削除に失敗しました') } }
 
   const activeFrame = replay.frames[replay.cursor]
