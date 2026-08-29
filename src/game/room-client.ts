@@ -9,14 +9,22 @@ export interface SharedRoomState {
   elapsedMs: number
 }
 
+export interface SharedRoomLiveState {
+  game: GameState
+  elapsedMs: number
+  cursorElapsedMs: number
+  playing: boolean
+  speed: number
+}
+
 type Listener = (message: RoomMessage) => void
 
 type RoomMessage =
   | { type: 'room-created'; roomId: string; role: RoomRole; joinToken: string; hostToken?: string }
   | { type: 'room-joined'; roomId: string; role: RoomRole; studentCount: number; state: SharedRoomState | null }
   | { type: 'state'; state: SharedRoomState | null }
+  | { type: 'live-state'; state: SharedRoomLiveState }
   | { type: 'presence'; studentCount: number }
-  | { type: 'coach-command'; command: { kind: string; value?: number } }
   | { type: 'error'; code?: string; message: string }
 
 const HOST_TOKEN_PREFIX = 'puyo-trainer-room-host:'
@@ -85,9 +93,7 @@ export class RoomClient {
           this._role = message.role
           this._roomId = message.roomId
           if (message.type === 'room-created' && message.hostToken) storeHostToken(message.roomId, message.hostToken)
-          if (message.type === 'room-joined') {
-            this._studentCount = message.studentCount
-          }
+          if (message.type === 'room-joined') this._studentCount = message.studentCount
         }
         if (message.type === 'presence') this._studentCount = message.studentCount
         this.emit(message)
@@ -120,14 +126,9 @@ export class RoomClient {
     this.send({ type: 'state', state })
   }
 
-  requestState(): void {
-    if (this._role !== 'student') return
-    this.send({ type: 'request-state' })
-  }
-
-  sendCoachCommand(command: { kind: string; value?: number }): void {
+  sendLiveState(state: SharedRoomLiveState): void {
     if (this._role !== 'coach') return
-    this.send({ type: 'coach-command', command })
+    this.send({ type: 'live-state', state })
   }
 
   disconnect(): void {
