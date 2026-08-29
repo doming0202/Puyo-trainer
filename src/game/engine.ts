@@ -39,10 +39,6 @@ export function createPlayer(controlMode: PlayerState['controlMode'] = 'human'):
 }
 export function createGame(): GameState { return { players: [createPlayer('human'), createPlayer('fixed')], activePlayer: 0, running: true, tick: 0 } }
 
-/**
- * Spawn just above the visible field. The axis starts on the first visible row
- * and the child is allowed to begin in the hidden 13th row.
- */
 export function spawnPair(pair: Pair): ActivePair { return { pair, x: 2, y: 0, rotation: 0 } }
 const OFFSETS: Record<Rotation, readonly [number, number]> = { 0: [0, -1], 1: [1, 0], 2: [0, 1], 3: [-1, 0] }
 
@@ -138,7 +134,7 @@ export function hardDrop(player: PlayerState): PlayerState {
   return beginPlacement({ ...player, current })
 }
 
-function writeCell(board: Board, hidden: HiddenBoard, x: number, y: number, color: PuyoColor | 5): void {
+function writeCell(board: Board, hidden: HiddenBoard, x: number, y: number, color: PuyoColor): void {
   if (y >= 0 && y < ROWS) {
     board[y][x] = color
     return
@@ -160,10 +156,10 @@ function applyGravityWithOrigins(board: Board, hidden: HiddenBoard): { board: Bo
   const fallingCells: FallingCell[] = []
   result[0] = [...combined[0]]
   for (let x = 0; x < COLS; x += 1) {
-    const occupied: Array<{ y: number; color: PuyoColor | 5 }> = []
+    const occupied: Array<{ y: number; color: PuyoColor }> = []
     for (let y = TOTAL_ROWS - 1; y >= 1; y -= 1) {
       const cell = combined[y][x]
-      if (cell !== null) occupied.push({ y, color: cell as PuyoColor | 5 })
+      if (cell !== null) occupied.push({ y, color: cell })
     }
     occupied.forEach(({ y: fromCombinedY, color }, index) => {
       const targetCombinedY = TOTAL_ROWS - 1 - index
@@ -185,7 +181,6 @@ function applyPendingGarbage(player: PlayerState): PlayerState {
   const fullRows = Math.floor(pending / COLS)
   const remainder = pending % COLS
   const placementColumns: number[] = []
-
   for (let row = 0; row < fullRows; row += 1) for (let x = 0; x < COLS; x += 1) placementColumns.push(x)
   for (let x = 0; x < remainder; x += 1) placementColumns.push(x)
 
@@ -221,6 +216,7 @@ export function advanceResolution(player: PlayerState): PlayerState {
     playComboSound(chain)
     return { ...player, chain, resolution: { stage: 'clear', pendingGroups: groups } }
   }
+
   const board = player.board.map((row) => [...row])
   let cleared = 0
   const garbageToClear = new Set<string>()
@@ -238,6 +234,7 @@ export function advanceResolution(player: PlayerState): PlayerState {
     const [x, y] = key.split(',').map(Number)
     board[y][x] = null
   }
+
   const colorBonus = Math.max(0, resolution.pendingGroups.length - 1) * 3
   const score = player.score + cleared * 10 * Math.max(1, player.chain + colorBonus)
   return { ...player, board, resolution: { stage: 'gravity', pendingGroups: [] } }
