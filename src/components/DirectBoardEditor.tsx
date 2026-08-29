@@ -7,6 +7,8 @@ const COLOR_NAMES: Record<PuyoColor, string> = { 1: '赤', 2: '青', 3: '緑', 4
 const COLOR_MAP: Record<PuyoColor, string> = { 1: '#ff5b68', 2: '#5aa7ff', 3: '#58d68d', 4: '#b66cff' }
 const SELECTION_COLOR = 'rgba(255, 159, 67, 0.16)'
 type Point = { x: number; y: number }
+type PaintTool = PuyoColor | null
+type DragMode = 'paint' | 'range' | null
 const keyOf = (p: Point) => `${p.x},${p.y}`
 const rangeKeys = (a: Point, b: Point) => {
   const out: string[] = []
@@ -38,11 +40,13 @@ export function DirectBoardEditor({ board, onBoardChange, onPairEdit: _onPairEdi
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [anchor, setAnchor] = useState<Point | null>(null)
   const [dragging, setDragging] = useState(false)
-  const [paintColor, setPaintColor] = useState<PuyoColor>(1)
+  const [dragMode, setDragMode] = useState<DragMode>(null)
+  const [paintTool, setPaintTool] = useState<PaintTool>(1)
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key !== 'Delete' || !selected.size) return
+      if (event.key !== 'Delete') return
+      if (!selected.size) return
       event.preventDefault()
       const next = board.map((row) => [...row])
       selected.forEach((key) => {
@@ -50,9 +54,13 @@ export function DirectBoardEditor({ board, onBoardChange, onPairEdit: _onPairEdi
         next[y][x] = null
       })
       onBoardChange(next)
+      setPaintTool(null)
       setSelected(new Set())
     }
-    const up = () => setDragging(false)
+    const up = () => {
+      setDragging(false)
+      setDragMode(null)
+    }
     window.addEventListener('keydown', onKey)
     window.addEventListener('mouseup', up)
     return () => {
@@ -61,12 +69,34 @@ export function DirectBoardEditor({ board, onBoardChange, onPairEdit: _onPairEdi
     }
   }, [board, onBoardChange, selected])
 
+  const updateSelection = (next: Set<string>) => {
+    setSelected(next)
+    const inferred = selectionColor(board, next)
+    if (inferred !== null) setPaintTool(inferred)
+  }
+
+  const applyPaint = (tool: PaintTool, keys = selected) => {
+    setPaintTool(tool)
+    if (!keys.size) return
+    const next = board.map((row) => [...row])
+    keys.forEach((key) => {
+      const [x, y] = key.split(',').map(Number)
+      next[y][x] = tool
+    })
+    onBoardChange(next)
+  }
+
+  const paintPoint = (point: Point) => {
+    const key = keyOf(point)
+    const one = new Set([key])
+    setSelected(one)
+    setAnchor(point)
+    applyPaint(paintTool, one)
+  }
+
   const select = (point: Point, event: MouseEvent) => {
     if (event.shiftKey && anchor) {
-      const next = new Set(rangeKeys(anchor, point))
-      setSelected(next)
-      const inferred = selectionColor(board, next)
-      if (inferred !== null) setPaintColor(inferred)
+      updateSelection(new Set(rangeKeys(anchor, point)))
       return
     }
 
@@ -75,33 +105,34 @@ export function DirectBoardEditor({ board, onBoardChange, onPairEdit: _onPairEdi
       const key = keyOf(point)
       if (next.has(key)) next.delete(key)
       else next.add(key)
-      setSelected(next)
+      updateSelection(next)
       setAnchor(point)
-      const inferred = selectionColor(board, next)
-      if (inferred !== null) setPaintColor(inferred)
       return
     }
 
-    const next = new Set([keyOf(point)])
-    setSelected(next)
-    setAnchor(point)
-    const inferred = selectionColor(board, next)
-    if (inferred !== null) setPaintColor(inferred)
+    paintPoint(point)
   }
 
-  const applyPaint = (color: PuyoColor) => {
-    setPaintColor(color)
-    if (!selected.size) return
-    const next = board.map((row) => [...row])
-    selected.forEach((key) => {
-      const [x, y] = key.split(',').map(Number)
-      next[y][x] = color
-    })
-    onBoardChange(next)
+  const handleMouseDown = (point: Point, event: MouseEvent) => {
+    if (event.button !== 0) return
+    event.preventDefault()
+    const selectionMode = (event.shiftKey && anchor) || event.ctrlKey || event.metaKey
+    select(point, event)
+    setDragging(true)
+    setDragMode(selectionMode ? 'range' : 'paint')
+  }
+
+  const handleMouseEnter = (point: Point) => {
+    if (!dragging || !anchor) return
+    if (dragMode === 'range') {
+      updateSelection(new Set(rangeKeys(anchor, point)))
+      return
+    }
+    paintPoint(point)
   }
 
   return <>
-    <div className="direct-editor-overlay" onMouseLeave={() => dragging && setDragging(false)}>
+    <div className="direct-editor-overlay" onMouseLeave={() => { setDragging(false); setDragMode(null) }}>
       {Array.from({ length: ROWS * COLS }, (_, index) => {
         const point = { x: index % COLS, y: Math.floor(index / COLS) }
         const key = keyOf(point)
@@ -111,15 +142,8 @@ export function DirectBoardEditor({ board, onBoardChange, onPairEdit: _onPairEdi
           key={key}
           className={`direct-editor-cell ${isSelected ? 'selected' : ''}`}
           style={isSelected ? { background: SELECTION_COLOR } : undefined}
-          onMouseDown={(event) => {
-            if (event.button !== 0) return
-            event.preventDefault()
-            select(point, event)
-            setDragging(true)
-          }}
-          onMouseEnter={() => {
-            if (dragging && anchor) setSelected(new Set(rangeKeys(anchor, point)))
-          }}
+          onMouseDown={(event) => handleMouseDown(point, event)}
+          onMouseEnter={() => handleMouseEnter(point)}
           onContextMenu={(event) => event.preventDefault()}
         >
           {isSelected && hasPuyo && <span className="direct-editor-selection-frame" aria-hidden="true" />}
@@ -135,9 +159,9 @@ export function DirectBoardEditor({ board, onBoardChange, onPairEdit: _onPairEdi
         <button
           key={color}
           type="button"
-          className={`direct-editor-palette-button ${paintColor === color ? 'selected' : ''}`}
+          className={`direct-editor-palette-button ${paintTool === color ? 'selected' : ''}`}
           title={`${COLOR_NAMES[color]}を選択範囲へ適用`}
-          aria-pressed={paintColor === color}
+          aria-pressed={paintTool === color}
           onMouseDown={(event) => event.stopPropagation()}
           onClick={() => applyPaint(color)}
         >
@@ -147,14 +171,25 @@ export function DirectBoardEditor({ board, onBoardChange, onPairEdit: _onPairEdi
       ))}
       <button
         type="button"
-        className={`direct-editor-palette-button palette-obstruction ${paintColor === GARBAGE_CELL ? 'selected' : ''}`}
+        className={`direct-editor-palette-button palette-obstruction ${paintTool === GARBAGE_CELL ? 'selected' : ''}`}
         title="妨害を選択範囲へ適用"
-        aria-pressed={paintColor === GARBAGE_CELL}
+        aria-pressed={paintTool === GARBAGE_CELL}
         onMouseDown={(event) => event.stopPropagation()}
         onClick={() => applyPaint(GARBAGE_CELL)}
       >
         <span className="direct-editor-palette-dot obstruction" />
         <span>妨害</span>
+      </button>
+      <button
+        type="button"
+        className={`direct-editor-palette-button palette-delete ${paintTool === null ? 'selected' : ''}`}
+        title="選択範囲を削除"
+        aria-pressed={paintTool === null}
+        onMouseDown={(event) => event.stopPropagation()}
+        onClick={() => applyPaint(null)}
+      >
+        <span className="direct-editor-palette-delete-mark" aria-hidden="true">×</span>
+        <span>削除</span>
       </button>
     </div>
   </>
