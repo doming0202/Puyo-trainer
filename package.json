@@ -4,16 +4,20 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "node scripts/dev.mjs",
+    "dev:client": "vite",
+    "dev:room": "node server/room-server.mjs",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "start": "node server/room-server.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",
+    "react": "latest",
+    "react-dom": "latest",
     "typescript": "latest",
     "vite": "latest",
-    "react": "latest",
-    "react-dom": "latest"
+    "ws": "^8.18.3"
   },
   "devDependencies": {}
 }
