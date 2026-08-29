@@ -35,6 +35,10 @@ document.addEventListener('pointerdown', (event) => {
 }, true)
 
 window.addEventListener('keydown', (event) => {
+  // Synthetic KeyboardEvents are used by the pause/timeline resume flow.
+  // They must still reach the normal App key handler even when the browser
+  // focus is temporarily outside the page.
+  if (!event.isTrusted) return
   if (!document.hasFocus()) {
     event.stopImmediatePropagation()
   }
