@@ -13,15 +13,14 @@ export function SnapshotBookmark() {
 
   useEffect(() => {
     const updatePosition = () => {
-      const panel = document.querySelector<HTMLElement>('.snapshot-panel')
-      const form = document.querySelector<HTMLElement>('.snapshot-form')
-      if (!panel || !form) return
-      const panelRect = panel.getBoundingClientRect()
-      const formRect = form.getBoundingClientRect()
+      const saveButton = document.querySelector<HTMLButtonElement>('.snapshot-form > button')
+      if (!saveButton) return
+      const rect = saveButton.getBoundingClientRect()
       const size = 38
+      const gap = 8
       setPosition({
-        left: formRect.left - 12 - size,
-        top: panelRect.top + (panelRect.height - size) / 2,
+        left: rect.left - gap - size,
+        top: rect.top + (rect.height - size) / 2,
       })
     }
 
