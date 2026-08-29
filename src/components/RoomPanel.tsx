@@ -1,43 +1,32 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { findFrameAtElapsed, type ReplayState } from '../game/replay'
-import type { GameState, PlayerState, TurnState } from '../game/types'
-import { getRoomInviteFromUrl, RoomClient, type SharedRoomLiveState, type SharedRoomState, type RoomRole } from '../game/room-client'
+import { gameForPersistence, replayForSharing } from '../game/state-boundary'
+import type { GameState } from '../game/types'
+import type { SharedRoomLiveState, SharedRoomState, RoomRole } from '../game/room-client'
+import { getRoomInviteFromUrl, RoomClient } from '../game/room-client'
 import './RoomPanel.css'
 
 const MAX_SHARED_FRAMES = 2500
 const LIVE_INTERVAL_MS = 150
 const SNAPSHOT_INTERVAL_MS = 5000
 
-function compactTurnState(state: TurnState): TurnState {
-  return structuredClone(state)
-}
-
-function compactPlayer(player: PlayerState): PlayerState {
-  return {
-    ...structuredClone(player),
-    turnStart: compactTurnState(player.turnStart),
-    undoStack: [],
-    redoStack: [],
-  }
-}
-
 function compactGame(game: GameState): GameState {
-  return {
-    ...game,
-    players: [compactPlayer(game.players[0]), compactPlayer(game.players[1])],
-  }
+  return gameForPersistence(game)
 }
 
 function compactReplay(replay: ReplayState): ReplayState {
-  const source = replay.frames
+  const normalized = replayForSharing(replay)
+  const source = normalized.frames
   const stride = Math.max(1, Math.ceil(source.length / MAX_SHARED_FRAMES))
-  const frames = source.filter((_, index) => index % stride === 0 || index === source.length - 1).map(frame => ({
-    ...frame,
-    players: [compactPlayer(frame.players[0]), compactPlayer(frame.players[1])],
-  }))
+  const frames = source.filter((_, index) => index % stride === 0 || index === source.length - 1)
   const activeElapsed = source[replay.cursor]?.elapsedMs ?? 0
   const cursor = findFrameAtElapsed(frames, activeElapsed)
-  return { frames, cursor, playing: replay.playing, speed: replay.speed }
+  return {
+    frames,
+    cursor,
+    playing: replay.playing,
+    speed: replay.speed,
+  }
 }
 
 export function RoomPanel({
