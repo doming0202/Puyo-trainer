@@ -31,7 +31,7 @@ export type Rotation = 0 | 1 | 2 | 3
 export interface Pair {
   axis: PuyoColor
   child: PuyoColor
-  } 
+}
 
 export interface ActivePair {
   pair: Pair
@@ -66,6 +66,9 @@ export interface TurnState {
   hidden: HiddenBoard
   current: ActivePair
   next: Pair[]
+  /** Incoming garbage waiting above the opponent board. */
+  incomingGarbage: number
+  /** Legacy serialized alias kept for compatibility with older snapshots. */
   garbage: number
   score: number
   chain: number
