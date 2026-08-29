@@ -38,8 +38,17 @@ function incomingGarbageOf(player: ReplayFrame['players'][number] | undefined): 
   return Math.max(0, Math.floor(numeric(player.incomingGarbage ?? player.garbage)))
 }
 
-export function buildTimelineEvents(frames: ReplayFrame[]): TimelineEvent[] {
-  if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('diagTimeline') === 'off') return []
+function playerHasEventRelevantChange(previous: ReplayFrame['players'][number] | undefined, current: ReplayFrame['players'][number] | undefined): boolean {
+  if (!previous || !current) return true
+  const previousChain = Math.max(0, Math.floor(numeric(previous.chain)))
+  const currentChain = Math.max(0, Math.floor(numeric(current.chain)))
+  if ((previousChain > 0) !== (currentChain > 0)) return true
+  if (previousChain !== currentChain) return true
+  if (incomingGarbageOf(current) !== incomingGarbageOf(previous)) return true
+  return false
+}
+
+function computeTimelineEvents(frames: ReplayFrame[]): TimelineEvent[] {
   if (!Array.isArray(frames) || frames.length < 2) return []
 
   const events: TimelineEvent[] = []
@@ -111,6 +120,17 @@ export function buildTimelineEvents(frames: ReplayFrame[]): TimelineEvent[] {
     }
 
     for (const playerIndex of [0, 1] as const) {
+      const previousPlayer = previous.players[playerIndex]
+      const currentPlayer = current.players[playerIndex]
+      if (!previousPlayer || !currentPlayer) continue
+
+      // Board garbage can only increase as part of incoming-garbage placement.
+      // Avoid scanning every board on every frame; only inspect it when the
+      // incoming amount changed and a placement/cancel event is therefore possible.
+      const previousIncoming = incomingGarbageOf(previousPlayer)
+      const currentIncoming = incomingGarbageOf(currentPlayer)
+      if (currentIncoming >= previousIncoming) continue
+
       const playerName = playerIndex === 0 ? 'A' : 'B'
       const boardGarbageDelta = countBoardGarbage(current, playerIndex) - countBoardGarbage(previous, playerIndex)
       if (boardGarbageDelta > 0) {
@@ -130,6 +150,34 @@ export function buildTimelineEvents(frames: ReplayFrame[]): TimelineEvent[] {
 
   const priority: Record<EventKind, number> = { chain: 0, attack: 1, drop: 2 }
   return events.sort((a, b) => a.time - b.time || priority[a.kind] - priority[b.kind] || a.key.localeCompare(b.key))
+}
+
+let cachedFrames: ReplayFrame[] | null = null
+let cachedEvents: TimelineEvent[] = []
+
+export function buildTimelineEvents(frames: ReplayFrame[]): TimelineEvent[] {
+  if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('diagTimeline') === 'off') return []
+  if (!Array.isArray(frames) || frames.length < 2) return []
+  if (frames === cachedFrames) return cachedEvents
+
+  const previousFrames = cachedFrames
+  if (previousFrames && frames.length >= previousFrames.length && previousFrames.length > 0 && frames[previousFrames.length - 1] === previousFrames[previousFrames.length - 1]) {
+    let eventRelevantChange = false
+    for (let index = previousFrames.length; index < frames.length; index += 1) {
+      if (playerHasEventRelevantChange(frames[index - 1]?.players[0], frames[index]?.players[0]) || playerHasEventRelevantChange(frames[index - 1]?.players[1], frames[index]?.players[1])) {
+        eventRelevantChange = true
+        break
+      }
+    }
+    if (!eventRelevantChange) {
+      cachedFrames = frames
+      return cachedEvents
+    }
+  }
+
+  cachedEvents = computeTimelineEvents(frames)
+  cachedFrames = frames
+  return cachedEvents
 }
 
 interface TimelineEventsProps {
