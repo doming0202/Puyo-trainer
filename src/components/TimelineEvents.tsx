@@ -19,32 +19,38 @@ function countBoardGarbage(frame: ReplayFrame, playerIndex: 0 | 1): number {
   return visible + hidden
 }
 
-interface ActiveChainEvent {
-  time: number
-  player: 0 | 1
+interface ActiveChain {
   maxChain: number
-  frameIndex: number
+  attack: number
 }
 
 export function buildTimelineEvents(frames: ReplayFrame[]): TimelineEvent[] {
   if (frames.length < 2) return []
 
   const events: TimelineEvent[] = []
-  const activeChains: Array<ActiveChainEvent | null> = [null, null]
+  const activeChains: Array<ActiveChain | undefined> = [undefined, undefined]
 
-  const flushChain = (playerIndex: 0 | 1) => {
-    const active = activeChains[playerIndex]
-    if (!active) return
-
+  const finishChain = (playerIndex: 0 | 1, time: number, keyIndex: number): void => {
+    const chain = activeChains[playerIndex]
+    if (!chain) return
     const playerName = playerIndex === 0 ? 'A' : 'B'
     events.push({
-      time: active.time,
-      label: `${playerName} ${active.maxChain}連鎖発生`,
+      time,
+      label: `${playerName} ${chain.maxChain}連鎖発生`,
       kind: 'chain',
-      player: active.player,
-      key: `${active.frameIndex}-chain-${active.player}`,
+      player: playerIndex,
+      key: `${keyIndex}-chain-${playerIndex}`,
     })
-    activeChains[playerIndex] = null
+    if (chain.attack > 0) {
+      events.push({
+        time,
+        label: `${playerName} 攻撃 +${chain.attack}`,
+        kind: 'attack',
+        player: playerIndex,
+        key: `${keyIndex}-attack-${playerIndex}`,
+      })
+    }
+    activeChains[playerIndex] = undefined
   }
 
   for (let index = 1; index < frames.length; index += 1) {
@@ -56,36 +62,23 @@ export function buildTimelineEvents(frames: ReplayFrame[]): TimelineEvent[] {
       const previousPlayer = previous.players[playerIndex]
       const currentPlayer = current.players[playerIndex]
       const playerName = playerIndex === 0 ? 'A' : 'B'
-      const opponentName = playerIndex === 0 ? 'B' : 'A'
+      const attackerIndex = playerIndex === 0 ? 1 : 0
 
-      // 連鎖: 連鎖中はイベントを追加せず、最大連鎖数だけ保持する。
-      // 連鎖が終了した時点で「○連鎖発生」を1件だけ記録する。
-      if (currentPlayer.chain > 0) {
-        const active = activeChains[playerIndex]
-        if (active) {
-          active.maxChain = Math.max(active.maxChain, currentPlayer.chain)
-        } else {
-          activeChains[playerIndex] = {
-            time,
-            player: playerIndex,
-            maxChain: currentPlayer.chain,
-            frameIndex: index,
-          }
-        }
-      } else if (activeChains[playerIndex]) {
-        flushChain(playerIndex)
+      // 相手側の受信おじゃまが増えた量を、攻撃側の現在の連鎖に合算する。
+      const incomingDelta = currentPlayer.incomingGarbage - previousPlayer.incomingGarbage
+      if (incomingDelta > 0 && activeChains[attackerIndex]) {
+        activeChains[attackerIndex]!.attack += incomingDelta
       }
 
-      // 攻撃: 相手側の受信おじゃまが増えた瞬間を、攻撃した側のイベントとして表示する。
-      const incomingDelta = currentPlayer.incomingGarbage - previousPlayer.incomingGarbage
-      if (incomingDelta > 0) {
-        events.push({
-          time,
-          label: `${opponentName} 攻撃 +${incomingDelta}`,
-          kind: 'attack',
-          player: playerIndex === 0 ? 1 : 0,
-          key: `${index}-attack-${playerIndex}`,
-        })
+      // 連鎖中は途中経過を表示せず、最大連鎖数だけ保持する。
+      if (currentPlayer.chain > 0) {
+        if (!activeChains[playerIndex]) activeChains[playerIndex] = { maxChain: currentPlayer.chain, attack: 0 }
+        else activeChains[playerIndex]!.maxChain = Math.max(activeChains[playerIndex]!.maxChain, currentPlayer.chain)
+      }
+
+      // 連鎖終了時に、最終結果を1イベントとして確定する。
+      if (previousPlayer.chain > 0 && currentPlayer.chain <= 0) {
+        finishChain(playerIndex, time, index)
       }
 
       // 妨害ブロック発生: 実際に盤面へ投入された瞬間だけ表示する。
@@ -102,8 +95,9 @@ export function buildTimelineEvents(frames: ReplayFrame[]): TimelineEvent[] {
     }
   }
 
-  flushChain(0)
-  flushChain(1)
+  // リプレイ末尾が連鎖中の場合も、そこまでの最終結果を表示する。
+  const lastTime = frames[frames.length - 1].elapsedMs
+  for (const playerIndex of [0, 1] as const) finishChain(playerIndex, lastTime, frames.length - 1)
 
   return events.sort((a, b) => a.time - b.time || a.key.localeCompare(b.key))
 }
