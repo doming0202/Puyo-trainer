@@ -87,5 +87,9 @@
 }
 
 .direct-editor-cell.selected .direct-editor-selection-frame {
-  border-color: rgba(255, 179, 91, .72);
+  position: absolute;
+  inset: 0;
+  border: 1px solid rgba(255, 179, 91, .72);
+  box-sizing: border-box;
+  pointer-events: none;
 }
