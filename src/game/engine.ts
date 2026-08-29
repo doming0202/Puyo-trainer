@@ -39,6 +39,7 @@ export function createPlayer(controlMode: PlayerState['controlMode'] = 'human'):
     score: 0,
     chain: 0,
     controlMode,
+    paused: false,
     alive: true,
     fallElapsedMs: 0,
     lockElapsedMs: 0,
@@ -70,14 +71,14 @@ export function canPlace(player: PlayerState, pair: ActivePair): boolean {
   })
 }
 export function movePair(player: PlayerState, dx: number): PlayerState {
-  if (!player.alive || player.resolution) return player
+  if (player.paused || !player.alive || player.resolution) return player
   const candidate = { ...player.current, x: player.current.x + dx }
   if (!canPlace(player, candidate)) return player
   playMoveSound()
   return { ...player, current: candidate, lockElapsedMs: 0, quickTurnArmed: false }
 }
 export function rotatePair(player: PlayerState, direction: 1 | -1): PlayerState {
-  if (!player.alive || player.resolution) return player
+  if (player.paused || !player.alive || player.resolution) return player
   const rotation = ((player.current.rotation + direction + 4) % 4) as Rotation
   const candidates = [
     { ...player.current, rotation },
@@ -97,13 +98,13 @@ export function rotatePair(player: PlayerState, direction: 1 | -1): PlayerState 
   return { ...player, current: quickCandidate, quickTurnArmed: false, lockElapsedMs: 0 }
 }
 export function stepDown(player: PlayerState): PlayerState {
-  if (!player.alive || player.resolution) return player
+  if (player.paused || !player.alive || player.resolution) return player
   const candidate = { ...player.current, y: player.current.y + 1 }
   if (!canPlace(player, candidate)) return { ...player, lockElapsedMs: 0, quickTurnArmed: false }
   return { ...player, current: candidate, fallElapsedMs: 0, lockElapsedMs: 0, quickTurnArmed: false }
 }
 export function advancePlayer(player: PlayerState, deltaMs: number): PlayerState {
-  if (!player.alive || player.resolution || player.controlMode === 'fixed') return player
+  if (player.paused || !player.alive || player.resolution) return player
   const delta = Math.max(0, deltaMs)
   const candidate = { ...player.current, y: player.current.y + 1 }
   if (!canPlace(player, candidate)) {
@@ -117,7 +118,7 @@ export function advancePlayer(player: PlayerState, deltaMs: number): PlayerState
   return { ...player, current: candidate, fallElapsedMs: fallElapsedMs - fallIntervalMs, lockElapsedMs: 0, quickTurnArmed: false }
 }
 export function hardDrop(player: PlayerState): PlayerState {
-  if (!player.alive || player.resolution || player.controlMode === 'fixed') return player
+  if (player.paused || !player.alive || player.resolution) return player
   let current = player.current
   while (canPlace(player, { ...current, y: current.y + 1 })) current = { ...current, y: current.y + 1 }
   return beginPlacement({ ...player, current })
@@ -194,8 +195,9 @@ function applyIncomingGarbage(player: PlayerState): PlayerState {
 }
 export interface ResolutionAdvanceResult { player: PlayerState; attack: number }
 export function advanceResolution(player: PlayerState): ResolutionAdvanceResult {
+  if (player.paused) return { player, attack: 0 }
   const resolution = player.resolution
-  if (!resolution || !player.alive || player.controlMode === 'fixed') return { player, attack: 0 }
+  if (!resolution || !player.alive) return { player, attack: 0 }
   if (resolution.stage === 'gravity') {
     const { board, hidden, fallingCells } = applyGravityWithOrigins(player.board, player.hidden)
     return { player: { ...player, board, hidden, resolution: { stage: 'fall', pendingGroups: [], fallingCells } }, attack: 0 }
@@ -265,13 +267,8 @@ function findGroups(board: Board): Array<Array<{ x: number; y: number }>> {
   }
   return groups
 }
-export type GameplayAction = 'left' | 'right' | 'rotate-left' | 'rotate-right' | 'soft-drop' | 'hard-drop' | 'reset-turn' | 'undo' | 'redo' | 'toggle-player-pause'
+export type GameplayAction = 'left' | 'right' | 'rotate-left' | 'rotate-right' | 'soft-drop' | 'hard-drop' | 'reset-turn' | 'undo' | 'redo'
 export function updatePlayer(player: PlayerState, action: GameplayAction): PlayerState {
-  if (action === 'toggle-player-pause') {
-    if (player.controlMode === 'human') return { ...player, controlMode: 'fixed' }
-    if (player.controlMode === 'fixed') return { ...player, controlMode: 'human' }
-    return player
-  }
   if (action === 'reset-turn') return resetToTurnStart(player)
   if (action === 'undo') return undoTurnAction(player)
   if (action === 'redo') return redoTurnAction(player)
