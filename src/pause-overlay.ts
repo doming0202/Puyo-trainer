@@ -106,19 +106,6 @@ function cancelResumeTimer(): void {
   }
 }
 
-function dispatchSyntheticKey(event: { key: string; code: string; ctrlKey?: boolean; shiftKey?: boolean; altKey?: boolean; metaKey?: boolean }): void {
-  window.dispatchEvent(new KeyboardEvent('keydown', {
-    key: event.key,
-    code: event.code,
-    ctrlKey: Boolean(event.ctrlKey),
-    shiftKey: Boolean(event.shiftKey),
-    altKey: Boolean(event.altKey),
-    metaKey: Boolean(event.metaKey),
-    bubbles: true,
-    cancelable: true,
-  }))
-}
-
 function startResumeCountdown(resumeEvent: typeof pendingResumeEvent = null): void {
   if (countingDown) return
   countingDown = true
@@ -144,14 +131,28 @@ function startResumeCountdown(resumeEvent: typeof pendingResumeEvent = null): vo
       hideOverlay()
 
       syntheticResume = true
-      dispatchSyntheticKey({ key: 'f', code: 'KeyF' })
+      document.documentElement.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'f',
+        code: 'KeyF',
+        bubbles: true,
+        cancelable: true,
+      }))
       syntheticResume = false
 
       const eventToResume = pendingResumeEvent
       pendingResumeEvent = null
       if (eventToResume) {
         window.setTimeout(() => {
-          dispatchSyntheticKey(eventToResume)
+          document.documentElement.dispatchEvent(new KeyboardEvent('keydown', {
+            key: eventToResume.key,
+            code: eventToResume.code,
+            ctrlKey: eventToResume.ctrlKey,
+            shiftKey: eventToResume.shiftKey,
+            altKey: eventToResume.altKey,
+            metaKey: eventToResume.metaKey,
+            bubbles: true,
+            cancelable: true,
+          }))
         }, 0)
       }
     }, 220)
@@ -217,6 +218,8 @@ function install(): Cleanup {
     if (syntheticResume || event.repeat) return
     if (isGameplayBlocked()) return
 
+    // Never combine the global Pause overlay with the player's X pause.
+    // While the overlay is active, X is consumed and has no game effect.
     if ((manuallyPaused || timelineAwaitingInput) && isConfiguredPlayerPauseKey(event)) {
       event.preventDefault()
       event.stopImmediatePropagation()
@@ -240,7 +243,12 @@ function install(): Cleanup {
         manuallyPaused = true
         setOverlay('Pause')
         syntheticResume = true
-        dispatchSyntheticKey({ key: event.key, code: 'KeyF' })
+        document.documentElement.dispatchEvent(new KeyboardEvent('keydown', {
+          key: event.key,
+          code: 'KeyF',
+          bubbles: true,
+          cancelable: true,
+        }))
         syntheticResume = false
         return
       }
