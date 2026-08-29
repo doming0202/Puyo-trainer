@@ -2,13 +2,15 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { findFrameAtElapsed, type ReplayState } from '../game/replay'
 import { gameForPersistence, replayForSharing } from '../game/state-boundary'
 import type { GameState } from '../game/types'
-import type { SharedRoomLiveState, SharedRoomState, RoomRole } from '../game/room-client'
+import type { SharedRoomLiveState, SharedRoomState, RoomRole, RoomFocusState } from '../game/room-client'
 import { getRoomInviteFromUrl, getStoredRoomSession, RoomClient } from '../game/room-client'
 import './RoomPanel.css'
 
 const MAX_SHARED_FRAMES = 2500
 const LIVE_INTERVAL_MS = 150
 const SNAPSHOT_INTERVAL_MS = 5000
+
+type FocusRequestDetail = { playerIndex: 0 | 1 }
 
 function compactGame(game: GameState): GameState {
   return gameForPersistence(game)
@@ -27,6 +29,10 @@ function compactReplay(replay: ReplayState): ReplayState {
     playing: replay.playing,
     speed: replay.speed,
   }
+}
+
+function dispatchFocusState(focus: RoomFocusState | null, memberId: string | null, connected: boolean): void {
+  window.dispatchEvent(new CustomEvent('puyo-room-focus-state', { detail: { focus, memberId, connected } }))
 }
 
 async function copyText(text: string): Promise<void> {
@@ -100,6 +106,7 @@ export function RoomPanel({
         setStoredRoom(getStoredRoomSession())
         setStatus('コーチとして接続中')
         setError('')
+        dispatchFocusState(message.focus, message.memberId, true)
       } else if (message.type === 'room-joined') {
         setRole(message.role)
         setRoomId(message.roomId)
@@ -107,6 +114,7 @@ export function RoomPanel({
         setStatus(message.role === 'coach' ? 'コーチとして接続中' : '生徒として接続中')
         setStudentCount(message.studentCount)
         setError('')
+        dispatchFocusState(message.focus, message.memberId, true)
         if (message.state && message.role === 'student') onRemoteState(message.state)
         if (message.liveState && message.role === 'student') onRemoteLiveState(message.liveState)
         if (message.role === 'student' && window.location.hash) {
@@ -121,20 +129,45 @@ export function RoomPanel({
         if (message.state && client.role === 'student') onRemoteState(message.state)
       } else if (message.type === 'live-state') {
         if (message.state && client.role === 'student' && followCoachRef.current) onRemoteLiveState(message.state)
+      } else if (message.type === 'focus-state') {
+        dispatchFocusState(message.focus, client.memberId || null, true)
+      } else if (message.type === 'focus-granted') {
+        dispatchFocusState(message.focus, client.memberId || null, true)
+        window.dispatchEvent(new CustomEvent('puyo-room-focus-granted', { detail: { playerIndex: message.playerIndex } }))
+      } else if (message.type === 'focus-denied') {
+        window.dispatchEvent(new CustomEvent('puyo-room-focus-denied', { detail: { playerIndex: message.playerIndex, reason: message.reason, ownerRole: message.ownerRole ?? null } }))
       } else if (message.type === 'disconnected') {
         setRole(null)
         setStudentCount(0)
         setStatus('接続が切れました')
         setStoredRoom(getStoredRoomSession())
+        dispatchFocusState(null, null, false)
       } else if (message.type === 'error') {
         setStatus('接続エラー')
         setError(message.message)
       }
     })
+
+    const onFocusRequest = (event: Event) => {
+      const detail = (event as CustomEvent<FocusRequestDetail>).detail
+      if (!detail || (detail.playerIndex !== 0 && detail.playerIndex !== 1)) return
+      void client.requestFocus(detail.playerIndex)
+    }
+    const onFocusRelease = (event: Event) => {
+      const detail = (event as CustomEvent<FocusRequestDetail>).detail
+      if (!detail || (detail.playerIndex !== 0 && detail.playerIndex !== 1)) return
+      client.releaseFocus(detail.playerIndex)
+    }
+    window.addEventListener('puyo-room-request-focus', onFocusRequest)
+    window.addEventListener('puyo-room-release-focus', onFocusRelease)
+
     return () => {
+      window.removeEventListener('puyo-room-request-focus', onFocusRequest)
+      window.removeEventListener('puyo-room-release-focus', onFocusRelease)
       unsubscribe()
       client.disconnect()
       clientRef.current = null
+      dispatchFocusState(null, null, false)
     }
   }, [onRemoteLiveState, onRemoteState])
 
@@ -237,6 +270,7 @@ export function RoomPanel({
     setStoredRoom(null)
     setStatus('未接続')
     setError('')
+    dispatchFocusState(null, null, false)
   }
 
   if (!open) return null
