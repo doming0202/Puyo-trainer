@@ -6,6 +6,7 @@ import './RoomPanel.css'
 
 const MAX_SHARED_FRAMES = 2500
 const LIVE_INTERVAL_MS = 150
+const SNAPSHOT_INTERVAL_MS = 5000
 
 function compactTurnState(state: TurnState): TurnState {
   return structuredClone(state)
@@ -62,6 +63,7 @@ export function RoomPanel({
   const timelineRef = useRef(currentTimelineMs)
   const followCoachRef = useRef(true)
   const autoJoinRef = useRef('')
+  const lastSnapshotSyncRef = useRef(0)
   const [role, setRole] = useState<RoomRole | null>(null)
   const [roomId, setRoomId] = useState('')
   const [joinToken, setJoinToken] = useState('')
@@ -93,6 +95,7 @@ export function RoomPanel({
         setStudentCount(message.studentCount)
         setError('')
         if (message.state && message.role === 'student') onRemoteState(message.state)
+        if (message.liveState && message.role === 'student') onRemoteLiveState(message.liveState)
         if (message.role === 'student' && window.location.hash) {
           const url = new URL(window.location.href)
           url.hash = ''
@@ -128,6 +131,7 @@ export function RoomPanel({
       replay: compactReplay(replayRef.current),
       elapsedMs: timelineRef.current,
     })
+    lastSnapshotSyncRef.current = Date.now()
     setStatus('コーチとして接続中')
   }, [open, role])
 
@@ -139,12 +143,13 @@ export function RoomPanel({
       const currentReplay = replayRef.current
       const currentElapsed = Math.max(0, timelineRef.current)
       const lastElapsed = currentReplay.frames[currentReplay.frames.length - 1]?.elapsedMs ?? 0
-      if (currentElapsed + 80 < lastElapsed || gameRef.current.tick === 0) {
+      if (currentElapsed + 80 < lastElapsed || gameRef.current.tick === 0 || Date.now() - lastSnapshotSyncRef.current >= SNAPSHOT_INTERVAL_MS) {
         client.sendState({
           game: compactGame(gameRef.current),
           replay: compactReplay(currentReplay),
           elapsedMs: currentElapsed,
         })
+        lastSnapshotSyncRef.current = Date.now()
       }
       client.sendLiveState({
         game: compactGame(gameRef.current),
