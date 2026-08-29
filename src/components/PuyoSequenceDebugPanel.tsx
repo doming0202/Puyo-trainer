@@ -6,6 +6,7 @@ import './puyo-sequence-debug.css'
 const COLORS: PuyoColor[] = [1, 2, 3, 4]
 const COLOR_NAMES: Record<PuyoColor, string> = { 1: '赤', 2: '青', 3: '緑', 4: '紫' }
 const COLOR_MARKS: Record<PuyoColor, string> = { 1: '🔴', 2: '🔵', 3: '🟢', 4: '🟣' }
+const DEBUG_HOTKEY = 'Ctrl + Shift + F12'
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 0xffffffff) >>> 0
@@ -23,8 +24,9 @@ export function PuyoSequenceDebugPanel() {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.repeat || event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return
-      if (event.ctrlKey && event.shiftKey && event.code === 'KeyD') {
+      if (event.ctrlKey && event.shiftKey && !event.altKey && !event.metaKey && event.code === 'F12') {
         event.preventDefault()
+        event.stopImmediatePropagation()
         setOpen((value) => !value)
       }
     }
@@ -70,6 +72,6 @@ export function PuyoSequenceDebugPanel() {
         <span>{String(index + 1).padStart(3, '0')}</span><PairView pair={pair} />
       </div>)}
     </div>
-    <div className="debug-hint">Ctrl + Shift + D で表示 / 非表示</div>
+    <div className="debug-hint">{DEBUG_HOTKEY} で表示 / 非表示</div>
   </aside>
 }
