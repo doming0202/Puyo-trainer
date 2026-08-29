@@ -282,22 +282,13 @@ function install(): Cleanup {
   return cleanup
 }
 
-let domReadyCleanup: (() => void) | null = null
-
+const targetWindow = window as PauseOverlayWindow
 const start = () => {
-  domReadyCleanup = install()
+  install()
 }
 
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', start, { once: true })
-  const hotCleanup = () => {
-    document.removeEventListener('DOMContentLoaded', start)
-    domReadyCleanup?.()
-    domReadyCleanup = null
-  }
-  const targetWindow = window as PauseOverlayWindow
-  const previousHotCleanup = targetWindow.__puyoPauseOverlayCleanup
-  if (previousHotCleanup) previousHotCleanup()
 } else {
   start()
 }
