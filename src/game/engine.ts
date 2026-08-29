@@ -273,7 +273,26 @@ export function advanceResolution(player: PlayerState): ResolutionAdvanceResult 
   const colorBonus = Math.max(0, resolution.pendingGroups.length - 1) * 3
   const score = player.score + cleared * 10 * Math.max(1, player.chain + colorBonus)
   const attack = calculateGarbageAttack(cleared, player.chain, resolution.pendingGroups.length)
-  return { player: { ...player, board, resolution: { stage: 'gravity', pendingGroups: [] } }, attack }
+
+  // Phase 3: own incoming garbage is canceled before any remaining attack
+  // is sent to the opponent. This also works symmetrically when both players
+  // attack during the same resolution tick.
+  const incomingGarbage = Math.max(0, Math.floor(player.incomingGarbage))
+  const canceled = Math.min(incomingGarbage, attack)
+  const remainingIncoming = incomingGarbage - canceled
+  const outgoingAttack = attack - canceled
+
+  return {
+    player: {
+      ...player,
+      board,
+      score,
+      incomingGarbage: remainingIncoming,
+      garbage: remainingIncoming,
+      resolution: { stage: 'gravity', pendingGroups: [] },
+    },
+    attack: outgoingAttack,
+  }
 }
 
 function finishPlacement(player: PlayerState): PlayerState {
