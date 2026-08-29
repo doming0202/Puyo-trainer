@@ -316,8 +316,8 @@ export default function App() {
     return nextGame
   })
 
-  const setEditedBoard = (board: Board) => editPlayerState(player => syncEditedBoardWithFalling(player, board))
-  const setEditedPair = (pair: PairEdit) => editPlayerState(player => setPairColors(player, pair.axis, pair.child))
+  const setEditedBoard = (board: Board) => { editPlayerState(player => syncEditedBoardWithFalling(player, board)); window.dispatchEvent(new Event('puyo-room-state-changed')) }
+  const setEditedPair = (pair: PairEdit) => { editPlayerState(player => setPairColors(player, pair.axis, pair.child)); window.dispatchEvent(new Event('puyo-room-state-changed')) }
 
   const dispatch = useCallback((action: GameplayAction) => {
     const current = gameRef.current
@@ -339,7 +339,55 @@ export default function App() {
     gameRef.current = nextGame
     setGame(nextGame)
     setReplay(state => appendFrame(state, nextGame, elapsedMs))
+    window.dispatchEvent(new CustomEvent('puyo-room-local-action', { detail: { playerIndex, action } }))
   }, [editMode, focusedPlayer, pendingRoomFocus, roomConnected, roomFocusState, roomMemberId, syncElapsed])
+
+  useEffect(() => {
+    const onStudentAction = (event: Event) => {
+      const detail = (event as CustomEvent<{ playerIndex: 0 | 1; action: GameplayAction | 'global-pause' }>).detail
+      if (!detail || (detail.playerIndex !== 0 && detail.playerIndex !== 1) || !roomConnected || !roomMemberId) return
+      const current = gameRef.current
+
+      if (detail.action === 'global-pause') {
+        const currentReplay = replayRef.current
+        if (currentReplay.playing) {
+          const frame = currentReplay.frames[currentReplay.cursor]
+          const elapsedMs = frame?.elapsedMs ?? 0
+          setReplay(state => ({ ...state, playing: false }))
+          resetClock(elapsedMs)
+          const nextGame = { ...frameToGame(frame ?? currentReplay.frames[0], false), running: true }
+          gameRef.current = nextGame
+          setGame(nextGame)
+        } else {
+          const elapsedMs = syncElapsed(current.running)
+          const nextGame = { ...current, running: !current.running }
+          gameRef.current = nextGame
+          setGame(nextGame)
+          setReplay(state => appendFrame(state, nextGame, elapsedMs))
+        }
+        window.dispatchEvent(new Event('puyo-room-state-changed'))
+        return
+      }
+
+      const player = current.players[detail.playerIndex]
+      const historyAction = detail.action === 'reset-turn' || detail.action === 'undo' || detail.action === 'redo'
+      const playerPauseAction = detail.action === 'toggle-player-pause'
+      if (!historyAction && !playerPauseAction && (player.controlMode !== 'human' || !player.alive || !current.running)) return
+      if ((historyAction || playerPauseAction) && player.controlMode === 'replay') return
+      const elapsedMs = syncElapsed(current.running)
+      const nextPlayer = updatePlayer(player, detail.action)
+      if (nextPlayer === player) return
+      const players = [...current.players] as [PlayerState, PlayerState]
+      players[detail.playerIndex] = nextPlayer
+      const nextGame = { ...current, players, activePlayer: detail.playerIndex, tick: current.tick + 1 }
+      gameRef.current = nextGame
+      setGame(nextGame)
+      setReplay(state => appendFrame(state, nextGame, elapsedMs))
+      window.dispatchEvent(new Event('puyo-room-state-changed'))
+    }
+    window.addEventListener('puyo-room-student-action', onStudentAction)
+    return () => window.removeEventListener('puyo-room-student-action', onStudentAction)
+  }, [resetClock, roomConnected, roomMemberId, syncElapsed])
 
   const actionForKey = useCallback((event: KeyboardEvent): GameplayAction | null => {
     const binding = bindingFromEvent(event)
@@ -412,6 +460,7 @@ export default function App() {
           setGame(nextGame)
           setReplay(state => appendFrame(state, nextGame, elapsedMs))
           setLiveElapsedMs(elapsedMs)
+          window.dispatchEvent(new CustomEvent('puyo-room-local-action', { detail: { playerIndex: focusedPlayer, action: 'global-pause' } }))
         }
         return
       }

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { findFrameAtElapsed, type ReplayState } from '../game/replay'
 import { gameForPersistence, replayForSharing } from '../game/state-boundary'
 import type { GameState } from '../game/types'
-import type { SharedRoomLiveState, SharedRoomState, RoomRole, RoomFocusState } from '../game/room-client'
+import type { RoomAction, SharedRoomLiveState, SharedRoomState, RoomRole, RoomFocusState } from '../game/room-client'
 import { getRoomInviteFromUrl, getStoredRoomSession, RoomClient } from '../game/room-client'
 import './RoomPanel.css'
 
@@ -134,6 +134,8 @@ export function RoomPanel({
       } else if (message.type === 'focus-granted') {
         dispatchFocusState(message.focus, client.memberId || null, true)
         window.dispatchEvent(new CustomEvent('puyo-room-focus-granted', { detail: { playerIndex: message.playerIndex } }))
+      } else if (message.type === 'student-action') {
+        window.dispatchEvent(new CustomEvent('puyo-room-student-action', { detail: { playerIndex: message.playerIndex, action: message.action } }))
       } else if (message.type === 'focus-denied') {
         window.dispatchEvent(new CustomEvent('puyo-room-focus-denied', { detail: { playerIndex: message.playerIndex, reason: message.reason, ownerRole: message.ownerRole ?? null } }))
       } else if (message.type === 'disconnected') {
@@ -158,12 +160,37 @@ export function RoomPanel({
       if (!detail || (detail.playerIndex !== 0 && detail.playerIndex !== 1)) return
       client.releaseFocus(detail.playerIndex)
     }
+    const onLocalAction = (event: Event) => {
+      const detail = (event as CustomEvent<{ playerIndex: 0 | 1; action: RoomAction }>).detail
+      if (!detail || (detail.playerIndex !== 0 && detail.playerIndex !== 1) || typeof detail.action !== 'string') return
+      if (client.role === 'student') {
+        if (client.focus[detail.playerIndex] === client.memberId) client.sendAction(detail.playerIndex, detail.action)
+      } else if (client.role === 'coach') {
+        const currentGame = gameRef.current
+        const currentReplay = replayRef.current
+        const currentElapsed = timelineRef.current
+        client.sendState({ game: compactGame(currentGame), replay: compactReplay(currentReplay), elapsedMs: currentElapsed })
+        lastSnapshotSyncRef.current = Date.now()
+      }
+    }
+    const onRoomStateChanged = () => {
+      if (client.role !== 'coach') return
+      const currentGame = gameRef.current
+      const currentReplay = replayRef.current
+      const currentElapsed = timelineRef.current
+      client.sendState({ game: compactGame(currentGame), replay: compactReplay(currentReplay), elapsedMs: currentElapsed })
+      lastSnapshotSyncRef.current = Date.now()
+    }
     window.addEventListener('puyo-room-request-focus', onFocusRequest)
     window.addEventListener('puyo-room-release-focus', onFocusRelease)
+    window.addEventListener('puyo-room-local-action', onLocalAction)
+    window.addEventListener('puyo-room-state-changed', onRoomStateChanged)
 
     return () => {
       window.removeEventListener('puyo-room-request-focus', onFocusRequest)
       window.removeEventListener('puyo-room-release-focus', onFocusRelease)
+      window.removeEventListener('puyo-room-local-action', onLocalAction)
+      window.removeEventListener('puyo-room-state-changed', onRoomStateChanged)
       unsubscribe()
       client.disconnect()
       clientRef.current = null

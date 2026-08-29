@@ -1,8 +1,10 @@
 import type { GameState } from './types'
 import type { ReplayState } from './replay'
+import type { GameplayAction } from './keybinds'
 
 export type RoomRole = 'coach' | 'student'
 export type RoomFocusState = [string | null, string | null]
+export type RoomAction = GameplayAction | 'global-pause'
 
 export interface SharedRoomState {
   game: GameState
@@ -29,6 +31,7 @@ type RoomMessage =
   | { type: 'focus-state'; focus: RoomFocusState }
   | { type: 'focus-granted'; playerIndex: 0 | 1; focus: RoomFocusState }
   | { type: 'focus-denied'; playerIndex: 0 | 1 | null; reason: string; ownerRole?: RoomRole | null }
+  | { type: 'student-action'; playerIndex: 0 | 1; action: RoomAction }
   | { type: 'disconnected' }
   | { type: 'error'; code?: string; message: string }
 
@@ -253,6 +256,11 @@ export class RoomClient {
   forgetStoredRoom(): void {
     clearRoomSession()
     this.pendingJoin = null
+  }
+
+  sendAction(playerIndex: 0 | 1, action: RoomAction): void {
+    if (this._role !== 'student') return
+    this.send({ type: 'student-action', playerIndex, action })
   }
 
   sendState(state: SharedRoomState): void {

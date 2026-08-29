@@ -221,6 +221,26 @@ function handleMessage(socket, raw) {
     return
   }
 
+  if (message.type === 'student-action') {
+    if (member.role !== 'student') {
+      return send(socket, { type: 'error', code: 'student-action-forbidden', message: '生徒操作を送信できるのは生徒だけです' })
+    }
+    const playerIndex = Number(message.playerIndex)
+    const action = typeof message.action === 'string' ? message.action : ''
+    const allowedActions = new Set([
+      'left', 'right', 'rotate-left', 'rotate-right', 'soft-drop', 'hard-drop',
+      'reset-turn', 'undo', 'redo', 'toggle-player-pause', 'global-pause',
+    ])
+    if (!Number.isInteger(playerIndex) || playerIndex < 0 || playerIndex > 1 || !allowedActions.has(action)) {
+      return send(socket, { type: 'error', code: 'invalid-student-action', message: '無効な生徒操作です' })
+    }
+    if (room.focus[playerIndex] !== member.id) {
+      return send(socket, { type: 'error', code: 'focus-not-owned', message: 'このPlayerの操作権を持っていません' })
+    }
+    broadcast(room, { type: 'student-action', playerIndex, action }, socket)
+    return
+  }
+
   if (message.type === 'live-state' && member.role === 'coach') {
     const state = sanitizeState(message.state)
     if (!state) return
