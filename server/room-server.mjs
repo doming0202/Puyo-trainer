@@ -66,7 +66,7 @@ function handleMessage(socket, raw) {
     socket.room = room
     socket.member = member
     rooms.set(id, room)
-    send(socket, { type: 'room-created', roomId: id, role: 'coach', joinToken })
+    send(socket, { type: 'room-created', roomId: id, role: 'coach', joinToken, hostToken: coachToken })
     return
   }
 
@@ -129,7 +129,6 @@ function handleMessage(socket, raw) {
 
   if (message.type === 'coach-command' && getRole(room, member) === 'coach') {
     broadcast(room, { type: 'coach-command', command: message.command }, socket)
-    return
   }
 }
 
