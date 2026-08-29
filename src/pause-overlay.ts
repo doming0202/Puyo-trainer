@@ -7,6 +7,7 @@ const TIMELINE_SEEK_EVENT = 'puyo-timeline-seek-complete'
 const TIMELINE_RESUME_REQUEST_EVENT = 'puyo-timeline-resume-request'
 const TIMELINE_RESUME_CANCEL_EVENT = 'puyo-timeline-resume-cancel'
 const SNAPSHOT_LOADED_EVENT = 'puyo-snapshot-loaded'
+const GAME_RESET_EVENT = 'puyo-game-reset'
 const RESUME_ACTIONS: GameplayAction[] = ['left', 'right', 'rotate-left', 'rotate-right', 'soft-drop', 'hard-drop']
 
 let manuallyPaused = false
@@ -83,6 +84,13 @@ function hideOverlay(): void {
   overlay?.classList.remove('visible')
 }
 
+function cancelResumeTimer(): void {
+  if (resumeTimer !== null) {
+    window.clearTimeout(resumeTimer)
+    resumeTimer = null
+  }
+}
+
 function startResumeCountdown(resumeEvent: typeof pendingResumeEvent = null): void {
   if (countingDown) return
   countingDown = true
@@ -139,13 +147,11 @@ function startResumeCountdown(resumeEvent: typeof pendingResumeEvent = null): vo
 }
 
 function resetPauseState(): void {
+  syntheticResume = false
   manuallyPaused = false
   timelineAwaitingInput = false
   pendingResumeEvent = null
-  if (resumeTimer !== null) {
-    window.clearTimeout(resumeTimer)
-    resumeTimer = null
-  }
+  cancelResumeTimer()
   countingDown = false
   hideOverlay()
   window.dispatchEvent(new Event(TIMELINE_RESUME_CANCEL_EVENT))
@@ -173,6 +179,10 @@ function install(): void {
 
   window.addEventListener(SNAPSHOT_LOADED_EVENT, () => {
     pauseAfterSnapshotLoad()
+  })
+
+  window.addEventListener(GAME_RESET_EVENT, () => {
+    resetPauseState()
   })
 
   window.addEventListener(TIMELINE_RESUME_REQUEST_EVENT, (event) => {
@@ -235,15 +245,6 @@ function install(): void {
       })
     }
   }, true)
-
-  window.addEventListener('click', (event) => {
-    const target = event.target as HTMLElement | null
-    if (!target) return
-    const button = target.closest('button')
-    if (!button) return
-    const text = button.textContent?.trim() ?? ''
-    if (text.includes('新しいゲーム')) resetPauseState()
-  })
 }
 
 if (document.readyState === 'loading') {
