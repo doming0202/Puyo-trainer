@@ -163,34 +163,18 @@ export function RoomPanel({
     const onLocalAction = (event: Event) => {
       const detail = (event as CustomEvent<{ playerIndex: 0 | 1; action: RoomAction }>).detail
       if (!detail || (detail.playerIndex !== 0 && detail.playerIndex !== 1) || typeof detail.action !== 'string') return
-      if (client.role === 'student') {
-        if (client.focus[detail.playerIndex] === client.memberId) client.sendAction(detail.playerIndex, detail.action)
-      } else if (client.role === 'coach') {
-        const currentGame = gameRef.current
-        const currentReplay = replayRef.current
-        const currentElapsed = timelineRef.current
-        client.sendState({ game: compactGame(currentGame), replay: compactReplay(currentReplay), elapsedMs: currentElapsed })
-        lastSnapshotSyncRef.current = Date.now()
+      if (client.role === 'student' && client.focus[detail.playerIndex] === client.memberId) {
+        client.sendAction(detail.playerIndex, detail.action)
       }
-    }
-    const onRoomStateChanged = () => {
-      if (client.role !== 'coach') return
-      const currentGame = gameRef.current
-      const currentReplay = replayRef.current
-      const currentElapsed = timelineRef.current
-      client.sendState({ game: compactGame(currentGame), replay: compactReplay(currentReplay), elapsedMs: currentElapsed })
-      lastSnapshotSyncRef.current = Date.now()
     }
     window.addEventListener('puyo-room-request-focus', onFocusRequest)
     window.addEventListener('puyo-room-release-focus', onFocusRelease)
     window.addEventListener('puyo-room-local-action', onLocalAction)
-    window.addEventListener('puyo-room-state-changed', onRoomStateChanged)
 
     return () => {
       window.removeEventListener('puyo-room-request-focus', onFocusRequest)
       window.removeEventListener('puyo-room-release-focus', onFocusRelease)
       window.removeEventListener('puyo-room-local-action', onLocalAction)
-      window.removeEventListener('puyo-room-state-changed', onRoomStateChanged)
       unsubscribe()
       client.disconnect()
       clientRef.current = null
