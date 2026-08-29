@@ -46,6 +46,13 @@ function shuffle<T>(items: T[], random: () => number): void {
   }
 }
 
+function createBalancedPuyos(random: () => number): PuyoColor[] {
+  const puyos: PuyoColor[] = []
+  for (const color of COLORS) for (let i = 0; i < SEQUENCE_COLOR_COUNT; i += 1) puyos.push(color)
+  shuffle(puyos, random)
+  return puyos
+}
+
 /**
  * Generate one 128-pair cycle. The cycle contains exactly 64 of each color.
  * The first two pairs are constrained to use at most three colors while
@@ -53,9 +60,7 @@ function shuffle<T>(items: T[], random: () => number): void {
  */
 export function generatePuyoSequence(seed = randomSeed()): Pair[] {
   const random = mulberry32(seed)
-  const puyos: PuyoColor[] = []
-  for (const color of COLORS) for (let i = 0; i < SEQUENCE_COLOR_COUNT; i += 1) puyos.push(color)
-  shuffle(puyos, random)
+  const puyos = createBalancedPuyos(random)
 
   const firstColors = new Set(puyos.slice(0, 4))
   if (firstColors.size === 4) {
@@ -73,17 +78,33 @@ export function generatePuyoSequence(seed = randomSeed()): Pair[] {
   }))
 }
 
+/**
+ * Recovery sequence for restored/legacy replay states that have no saved
+ * sequence. It keeps the balanced 64/64/64/64 distribution, but deliberately
+ * does not apply the initial two-pair color restriction because this is not
+ * the opening sequence.
+ */
+function generateRecoverySequence(seed = randomSeed()): Pair[] {
+  const random = mulberry32(seed)
+  const puyos = createBalancedPuyos(random)
+  return Array.from({ length: SEQUENCE_PAIRS }, (_, index) => ({
+    axis: puyos[index * 2],
+    child: puyos[index * 2 + 1],
+  }))
+}
+
 export function createPuyoSequence(seed = randomSeed()): PuyoSequenceDebugState {
   return { seed: normalizeSeed(seed), sequence: generatePuyoSequence(seed), index: 0 }
 }
 
 export function nextSequencePair(state: PuyoSequenceDebugState): { pair: Pair; state: PuyoSequenceDebugState } {
-  // Old snapshots / replay frames created before the 128-pair sequence was
-  // introduced may not contain `sequence`. Recover it from the stored seed
-  // instead of letting one such frame crash the whole React tree.
-  const normalized: PuyoSequenceDebugState = Array.isArray(state.sequence) && state.sequence.length === SEQUENCE_PAIRS
+  // A replay/snapshot restored from a state that predates sequence persistence
+  // may have an undefined sequence at runtime. Recover it instead of crashing.
+  // Recovery intentionally has no opening color restriction.
+  const hasSequence = Array.isArray(state.sequence) && state.sequence.length === SEQUENCE_PAIRS
+  const normalized: PuyoSequenceDebugState = hasSequence
     ? { ...state, seed: normalizeSeed(state.seed), index: Math.max(0, Math.floor(state.index ?? 0)) }
-    : createPuyoSequence(state.seed)
+    : { seed: normalizeSeed(state.seed), sequence: generateRecoverySequence(state.seed), index: 0 }
 
   if (normalized.index < normalized.sequence.length) {
     const pair = normalized.sequence[normalized.index]
