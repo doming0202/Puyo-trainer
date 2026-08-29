@@ -1,0 +1,74 @@
+name: Repair garbage tiers
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/repair-garbage-tiers.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.event.head_commit.message == 'chore: arm proper garbage tiers'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Apply targeted repair
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected 1 match, got {count}')
+              p.write_text(text.replace(old, new, 1))
+
+          replace_once(
+              'src/game/types.ts',
+              "export function isGarbageCell(cell: Cell): boolean {\n  return cell === GARBAGE_CELL\n}",
+              "export function isGarbageCell(cell: Cell): boolean {\n  return cell !== null && cell >= GARBAGE_CELL\n}",
+          )
+
+          replace_once(
+              'src/game/engine.ts',
+              "  const placementColumns: number[] = []\n  for (let row = 0; row < fullRows; row += 1) for (let x = 0; x < COLS; x += 1) placementColumns.push(x)\n  for (let x = 0; x < remainder; x += 1) placementColumns.push(x)",
+              "  const placementColumns: number[] = []\n  for (let row = 0; row < fullRows; row += 1) for (let x = 0; x < COLS; x += 1) placementColumns.push(x)\n  for (let x = 0; x < remainder; x += 1) placementColumns.push(x)\n  const garbageCell = (pending < 6 ? 5 : pending < 12 ? 6 : pending < 24 ? 7 : pending < 48 ? 8 : 9) as unknown as PuyoColor",
+          )
+
+          replace_once(
+              'src/game/engine.ts',
+              '      writeCell(board, hidden, x, y, GARBAGE_CELL)',
+              '      writeCell(board, hidden, x, y, garbageCell)',
+          )
+
+          replace_once(
+              'src/App.tsx',
+              "const COLOR_NAMES: Record<PuyoColor, string> = { 1: '赤', 2: '青', 3: '緑', 4: '紫' }",
+              "const COLOR_NAMES: Record<PuyoColor, string> = { 1: '赤', 2: '青', 3: '緑', 4: '紫' }\n\nfunction garbageTierClass(color: PuyoColor): string {\n  const value = color as number\n  if (value < 5) return ''\n  const tier = Math.min(5, Math.max(1, value - 4))\n  return `garbage-puyo garbage-tier-${tier}`\n}",
+          )
+
+          replace_once(
+              'src/App.tsx',
+              "{color && <span className={`puyo ${fallingCell ? 'falling-puyo' : ''}`} style={puyoStyle} />}",
+              "{color && <span className={`puyo ${garbageTierClass(color)} ${fallingCell ? 'falling-puyo' : ''}`} style={puyoStyle} />}",
+          )
+          PY
+
+      - name: Commit repair and remove temporary workflow
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/game/types.ts src/game/engine.ts src/App.tsx
+          git rm .github/workflows/repair-garbage-tiers.yml
+          git commit -m 'fix: render independent garbage tiers'
+          git push
