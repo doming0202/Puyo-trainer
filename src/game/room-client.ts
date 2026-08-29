@@ -2,6 +2,7 @@ import type { GameState } from './types'
 import type { ReplayState } from './replay'
 
 export type RoomRole = 'coach' | 'student'
+export type RoomFocusState = [string | null, string | null]
 
 export interface SharedRoomState {
   game: GameState
@@ -20,11 +21,14 @@ export interface SharedRoomLiveState {
 type Listener = (message: RoomMessage) => void
 
 type RoomMessage =
-  | { type: 'room-created'; roomId: string; role: RoomRole; joinToken: string; hostToken?: string }
-  | { type: 'room-joined'; roomId: string; role: RoomRole; studentCount: number; state: SharedRoomState | null; liveState: SharedRoomLiveState | null }
+  | { type: 'room-created'; roomId: string; role: RoomRole; memberId: string; joinToken: string; hostToken?: string; focus: RoomFocusState }
+  | { type: 'room-joined'; roomId: string; role: RoomRole; memberId: string; studentCount: number; state: SharedRoomState | null; liveState: SharedRoomLiveState | null; focus: RoomFocusState }
   | { type: 'state'; state: SharedRoomState | null }
   | { type: 'live-state'; state: SharedRoomLiveState }
   | { type: 'presence'; studentCount: number }
+  | { type: 'focus-state'; focus: RoomFocusState }
+  | { type: 'focus-granted'; playerIndex: 0 | 1; focus: RoomFocusState }
+  | { type: 'focus-denied'; playerIndex: 0 | 1 | null; reason: string; ownerRole?: RoomRole | null }
   | { type: 'disconnected' }
   | { type: 'error'; code?: string; message: string }
 
@@ -89,12 +93,16 @@ export class RoomClient {
   private listeners = new Set<Listener>()
   private _role: RoomRole | null = null
   private _roomId = ''
+  private _memberId = ''
   private _studentCount = 0
+  private _focus: RoomFocusState = [null, null]
   private pendingJoin: { roomId: string; joinToken: string } | null = null
 
   get role(): RoomRole | null { return this._role }
   get roomId(): string { return this._roomId }
+  get memberId(): string { return this._memberId }
   get studentCount(): number { return this._studentCount }
+  get focus(): RoomFocusState { return [...this._focus] as RoomFocusState }
 
   subscribe(listener: Listener): () => void {
     this.listeners.add(listener)
@@ -158,19 +166,23 @@ export class RoomClient {
         if (message.type === 'room-created') {
           this._role = message.role
           this._roomId = message.roomId
+          this._memberId = message.memberId
+          this._focus = [...message.focus] as RoomFocusState
           if (message.hostToken) storeHostToken(message.roomId, message.hostToken)
           storeRoomSession(message.roomId, message.joinToken)
           this.pendingJoin = null
         } else if (message.type === 'room-joined') {
           this._role = message.role
           this._roomId = message.roomId
+          this._memberId = message.memberId
           this._studentCount = message.studentCount
-          if (this.pendingJoin?.roomId === message.roomId) {
-            storeRoomSession(message.roomId, this.pendingJoin.joinToken)
-          }
+          this._focus = [...message.focus] as RoomFocusState
+          if (this.pendingJoin?.roomId === message.roomId) storeRoomSession(message.roomId, this.pendingJoin.joinToken)
           this.pendingJoin = null
         }
         if (message.type === 'presence') this._studentCount = message.studentCount
+        if (message.type === 'focus-state') this._focus = [...message.focus] as RoomFocusState
+        if (message.type === 'focus-granted') this._focus = [...message.focus] as RoomFocusState
         if (message.type === 'error') {
           const stored = loadRoomSession()
           if (
@@ -178,9 +190,7 @@ export class RoomClient {
             this.pendingJoin &&
             stored?.roomId === this.pendingJoin.roomId &&
             stored.joinToken === this.pendingJoin.joinToken
-          ) {
-            clearRoomSession()
-          }
+          ) clearRoomSession()
           this.pendingJoin = null
         }
         this.emit(message)
@@ -190,6 +200,8 @@ export class RoomClient {
         if (this.socket === socket) {
           this.socket = null
           this._role = null
+          this._memberId = ''
+          this._focus = [null, null]
         }
         this.emit({ type: 'disconnected' })
       }
@@ -225,6 +237,19 @@ export class RoomClient {
     return true
   }
 
+  async requestFocus(playerIndex: 0 | 1): Promise<void> {
+    if (!this._role) return
+    if (this._focus[playerIndex] === this._memberId) return
+    await this.connect()
+    this.send({ type: 'request-focus', playerIndex })
+  }
+
+  releaseFocus(playerIndex: 0 | 1): void {
+    if (!this._role) return
+    if (this._focus[playerIndex] !== this._memberId) return
+    this.send({ type: 'release-focus', playerIndex })
+  }
+
   forgetStoredRoom(): void {
     clearRoomSession()
     this.pendingJoin = null
@@ -245,6 +270,8 @@ export class RoomClient {
     this.socket?.close()
     this.socket = null
     this._role = null
+    this._memberId = ''
+    this._focus = [null, null]
   }
 
   static inviteUrl(roomId: string, joinToken: string): string {
