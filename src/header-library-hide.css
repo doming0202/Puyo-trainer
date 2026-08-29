@@ -1,0 +1,3 @@
+.header-actions > button:not(.settings-button) {
+  display: none !important;
+}
