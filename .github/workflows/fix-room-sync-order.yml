@@ -1,0 +1,27 @@
+name: fix-room-sync-order
+on:
+  push:
+    paths:
+      - .github/workflows/fix-room-sync-order.yml
+permissions:
+  contents: write
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply fix
+        run: node scripts/fix-room-sync-order.mjs
+      - name: Cleanup
+        run: |
+          rm -f .github/workflows/fix-room-sync-order.yml
+          rm -f scripts/fix-room-sync-order.mjs
+      - name: Commit fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/App.tsx .github/workflows scripts
+          git commit -m "Fix room sync callback order"
+          git push origin HEAD:main
