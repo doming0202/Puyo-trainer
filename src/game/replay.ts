@@ -45,6 +45,7 @@ function cloneTurnState(state: TurnState | undefined, fallback: PlayerState): Tu
       score: fallback.score,
       chain: fallback.chain,
       controlMode: fallback.controlMode,
+      paused: fallback.paused ?? false,
       alive: fallback.alive,
       resolution: fallback.resolution ? structuredClone(fallback.resolution) : undefined,
       fallElapsedMs: fallback.fallElapsedMs ?? 0,
@@ -59,6 +60,7 @@ function cloneTurnState(state: TurnState | undefined, fallback: PlayerState): Tu
       : createPuyoSequence(state.puyoSequenceSeed ?? fallback.puyoSequenceSeed).sequence)
   return {
     ...state,
+    paused: state.paused ?? false,
     board: state.board.map((row) => [...row]),
     hidden: state.hidden.map((row) => [...row]),
     current: { ...state.current, pair: { ...state.current.pair } },
@@ -79,6 +81,7 @@ export function clonePlayer(player: PlayerState): PlayerState {
     : createPuyoSequence(player.puyoSequenceSeed).sequence
   return {
     ...player,
+    paused: player.paused ?? false,
     incomingGarbage,
     garbage,
     puyoSequence: sequence,
