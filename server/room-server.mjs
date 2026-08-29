@@ -55,6 +55,7 @@ function handleMessage(socket, raw) {
       createdAt: Date.now(),
       lastActiveAt: Date.now(),
       state: null,
+      liveState: null,
       members: [],
     }
     const member = { socket, role: 'coach' }
@@ -97,6 +98,7 @@ function handleMessage(socket, raw) {
       role,
       studentCount: room.members.filter(item => item.role === 'student').length,
       state: role === 'student' ? room.state : null,
+      liveState: role === 'student' ? room.liveState : null,
     })
     broadcast(room, {
       type: 'presence',
@@ -121,6 +123,7 @@ function handleMessage(socket, raw) {
   if (message.type === 'live-state' && member.role === 'coach') {
     const state = sanitizeState(message.state)
     if (!state) return
+    room.liveState = state
     broadcast(room, { type: 'live-state', state }, socket)
     return
   }
