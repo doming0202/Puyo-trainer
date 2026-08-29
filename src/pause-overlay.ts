@@ -6,6 +6,7 @@ const RESUME_COUNTDOWN_MS = 650
 const TIMELINE_SEEK_EVENT = 'puyo-timeline-seek-complete'
 const TIMELINE_RESUME_REQUEST_EVENT = 'puyo-timeline-resume-request'
 const TIMELINE_RESUME_CANCEL_EVENT = 'puyo-timeline-resume-cancel'
+const SNAPSHOT_LOADED_EVENT = 'puyo-snapshot-loaded'
 const RESUME_ACTIONS: GameplayAction[] = ['left', 'right', 'rotate-left', 'rotate-right', 'soft-drop', 'hard-drop']
 
 let manuallyPaused = false
@@ -151,31 +152,12 @@ function resetPauseState(): void {
 }
 
 function pauseAfterSnapshotLoad(): void {
-  window.setTimeout(() => {
-    if (countingDown) return
-
-    // React finishes applying the loaded state after the click handler.
-    // The timeline's LIVE label lets us determine whether that loaded state
-    // is currently running without mutating React-owned DOM.
-    const isRunning = Array.from(document.querySelectorAll('.timeline-labels span'))
-      .some((node) => node.textContent?.trim() === 'LIVE')
-
-    if (isRunning) {
-      syntheticResume = true
-      document.body.dispatchEvent(new KeyboardEvent('keydown', {
-        key: 'f',
-        code: 'KeyF',
-        bubbles: true,
-        cancelable: true,
-      }))
-      syntheticResume = false
-    }
-
-    manuallyPaused = false
-    timelineAwaitingInput = true
-    pendingResumeEvent = null
-    setOverlay('Pause')
-  }, 0)
+  if (countingDown) return
+  window.dispatchEvent(new Event(TIMELINE_RESUME_CANCEL_EVENT))
+  manuallyPaused = false
+  timelineAwaitingInput = true
+  pendingResumeEvent = null
+  setOverlay('Pause')
 }
 
 function install(): void {
@@ -187,6 +169,10 @@ function install(): void {
     manuallyPaused = false
     pendingResumeEvent = null
     setOverlay('Pause')
+  })
+
+  window.addEventListener(SNAPSHOT_LOADED_EVENT, () => {
+    pauseAfterSnapshotLoad()
   })
 
   window.addEventListener(TIMELINE_RESUME_REQUEST_EVENT, (event) => {
@@ -206,8 +192,6 @@ function install(): void {
       event.stopImmediatePropagation()
 
       if (timelineAwaitingInput) {
-        // Timeline seeks are also resumable with F. Clear the gameplay-key
-        // waiting state so a later gameplay key cannot start a second countdown.
         window.dispatchEvent(new Event(TIMELINE_RESUME_CANCEL_EVENT))
         timelineAwaitingInput = false
         startResumeCountdown()
@@ -217,8 +201,6 @@ function install(): void {
       if (!manuallyPaused) {
         manuallyPaused = true
         setOverlay('Pause')
-        // Re-dispatch the original event after the capture handler so App.tsx
-        // performs its existing running=true/false toggle exactly once.
         syntheticResume = true
         document.body.dispatchEvent(new KeyboardEvent('keydown', {
           key: event.key,
@@ -234,9 +216,6 @@ function install(): void {
       return
     }
 
-    // Both kinds of Pause (manual F-pause and timeline-seek pause) can also
-    // be resumed by any configured gameplay key. Keep that key and replay it
-    // after the same countdown so the intended move is not lost.
     if ((manuallyPaused || timelineAwaitingInput) && isConfiguredGameplayKey(event)) {
       event.preventDefault()
       event.stopImmediatePropagation()
@@ -263,13 +242,7 @@ function install(): void {
     const button = target.closest('button')
     if (!button) return
     const text = button.textContent?.trim() ?? ''
-    if (text.includes('新しいゲーム')) {
-      resetPauseState()
-      return
-    }
-    if (text.includes('読み込む')) {
-      pauseAfterSnapshotLoad()
-    }
+    if (text.includes('新しいゲーム')) resetPauseState()
   })
 }
 
