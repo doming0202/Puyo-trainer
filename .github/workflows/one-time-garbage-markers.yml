@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   patch:
-    if: github.event.head_commit.message == 'chore: add one-time garbage marker patch'
+    if: github.event.head_commit.message == 'chore: arm garbage marker patch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
