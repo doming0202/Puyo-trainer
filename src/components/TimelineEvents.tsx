@@ -58,30 +58,39 @@ export function buildTimelineEvents(frames: ReplayFrame[]): TimelineEvent[] {
     const current = frames[index]
     const time = current.elapsedMs
 
+    // まず両プレイヤーの連鎖状態を更新する。これにより、同一フレームで
+    // 連鎖開始と攻撃発生が起きても、攻撃を正しい連鎖へ合算できる。
     for (const playerIndex of [0, 1] as const) {
-      const previousPlayer = previous.players[playerIndex]
       const currentPlayer = current.players[playerIndex]
-      const playerName = playerIndex === 0 ? 'A' : 'B'
-      const attackerIndex = playerIndex === 0 ? 1 : 0
-
-      // 相手側の受信おじゃまが増えた量を、攻撃側の現在の連鎖に合算する。
-      const incomingDelta = currentPlayer.incomingGarbage - previousPlayer.incomingGarbage
-      if (incomingDelta > 0 && activeChains[attackerIndex]) {
-        activeChains[attackerIndex]!.attack += incomingDelta
-      }
-
-      // 連鎖中は途中経過を表示せず、最大連鎖数だけ保持する。
       if (currentPlayer.chain > 0) {
         if (!activeChains[playerIndex]) activeChains[playerIndex] = { maxChain: currentPlayer.chain, attack: 0 }
         else activeChains[playerIndex]!.maxChain = Math.max(activeChains[playerIndex]!.maxChain, currentPlayer.chain)
       }
+    }
 
-      // 連鎖終了時に、最終結果を1イベントとして確定する。
+    // 連鎖中に発生した攻撃は、個別イベントにせず、その連鎖の合計へ加算する。
+    for (const playerIndex of [0, 1] as const) {
+      const previousPlayer = previous.players[playerIndex]
+      const currentPlayer = current.players[playerIndex]
+      const attackerIndex = playerIndex === 0 ? 1 : 0
+      const incomingDelta = currentPlayer.incomingGarbage - previousPlayer.incomingGarbage
+      if (incomingDelta > 0 && activeChains[attackerIndex]) {
+        activeChains[attackerIndex]!.attack += incomingDelta
+      }
+    }
+
+    // 連鎖終了時に、最終結果を1イベントとして確定する。
+    for (const playerIndex of [0, 1] as const) {
+      const previousPlayer = previous.players[playerIndex]
+      const currentPlayer = current.players[playerIndex]
       if (previousPlayer.chain > 0 && currentPlayer.chain <= 0) {
         finishChain(playerIndex, time, index)
       }
+    }
 
-      // 妨害ブロック発生: 実際に盤面へ投入された瞬間だけ表示する。
+    // 妨害ブロック発生: 実際に盤面へ投入された瞬間だけ表示する。
+    for (const playerIndex of [0, 1] as const) {
+      const playerName = playerIndex === 0 ? 'A' : 'B'
       const boardGarbageDelta = countBoardGarbage(current, playerIndex) - countBoardGarbage(previous, playerIndex)
       if (boardGarbageDelta > 0) {
         events.push({
@@ -99,7 +108,8 @@ export function buildTimelineEvents(frames: ReplayFrame[]): TimelineEvent[] {
   const lastTime = frames[frames.length - 1].elapsedMs
   for (const playerIndex of [0, 1] as const) finishChain(playerIndex, lastTime, frames.length - 1)
 
-  return events.sort((a, b) => a.time - b.time || a.key.localeCompare(b.key))
+  const priority: Record<EventKind, number> = { chain: 0, attack: 1, drop: 2 }
+  return events.sort((a, b) => a.time - b.time || priority[a.kind] - priority[b.kind] || a.key.localeCompare(b.key))
 }
 
 interface TimelineEventsProps {
