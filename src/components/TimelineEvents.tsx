@@ -2,7 +2,7 @@ import type { ReplayFrame } from '../game/replay'
 import { isGarbageCell } from '../game/types'
 import './TimelineEvents.css'
 
-type EventKind = 'chain' | 'attack' | 'cancel' | 'drop'
+type EventKind = 'attack' | 'drop'
 
 export interface TimelineEvent {
   time: number
@@ -19,32 +19,10 @@ function countBoardGarbage(frame: ReplayFrame, playerIndex: 0 | 1): number {
   return visible + hidden
 }
 
-interface ActiveChainEvent {
-  time: number
-  player: 0 | 1
-  maxChain: number
-  frameIndex: number
-}
-
 export function buildTimelineEvents(frames: ReplayFrame[]): TimelineEvent[] {
   if (frames.length < 2) return []
 
   const events: TimelineEvent[] = []
-  const activeChains: Array<ActiveChainEvent | null> = [null, null]
-
-  const flushChain = (playerIndex: 0 | 1) => {
-    const active = activeChains[playerIndex]
-    if (!active) return
-    const playerName = playerIndex === 0 ? 'A' : 'B'
-    events.push({
-      time: active.time,
-      label: `${playerName} ${active.maxChain}連鎖発生`,
-      kind: 'chain',
-      player: active.player,
-      key: `${active.frameIndex}-chain-${active.player}`,
-    })
-    activeChains[playerIndex] = null
-  }
 
   for (let index = 1; index < frames.length; index += 1) {
     const previous = frames[index - 1]
@@ -57,25 +35,8 @@ export function buildTimelineEvents(frames: ReplayFrame[]): TimelineEvent[] {
       const playerName = playerIndex === 0 ? 'A' : 'B'
       const opponentName = playerIndex === 0 ? 'B' : 'A'
 
-      if (currentPlayer.chain > previousPlayer.chain) {
-        const active = activeChains[playerIndex]
-        if (active) {
-          active.maxChain = Math.max(active.maxChain, currentPlayer.chain)
-        } else {
-          activeChains[playerIndex] = {
-            time,
-            player: playerIndex,
-            maxChain: currentPlayer.chain,
-            frameIndex: index,
-          }
-        }
-      } else if (activeChains[playerIndex] && currentPlayer.chain <= 0) {
-        flushChain(playerIndex)
-      }
-
+      // 攻撃: 相手側の受信おじゃまが増えた瞬間を、攻撃した側のイベントとして表示する。
       const incomingDelta = currentPlayer.incomingGarbage - previousPlayer.incomingGarbage
-      const boardGarbageDelta = countBoardGarbage(current, playerIndex) - countBoardGarbage(previous, playerIndex)
-
       if (incomingDelta > 0) {
         events.push({
           time,
@@ -84,16 +45,10 @@ export function buildTimelineEvents(frames: ReplayFrame[]): TimelineEvent[] {
           player: playerIndex === 0 ? 1 : 0,
           key: `${index}-attack-${playerIndex}`,
         })
-      } else if (incomingDelta < 0 && boardGarbageDelta <= 0) {
-        events.push({
-          time,
-          label: `${playerName} 相殺 -${Math.abs(incomingDelta)}`,
-          kind: 'cancel',
-          player: playerIndex,
-          key: `${index}-cancel-${playerIndex}`,
-        })
       }
 
+      // 妨害ブロック発生: 実際に盤面へ投入された瞬間だけ表示する。
+      const boardGarbageDelta = countBoardGarbage(current, playerIndex) - countBoardGarbage(previous, playerIndex)
       if (boardGarbageDelta > 0) {
         events.push({
           time,
@@ -105,9 +60,6 @@ export function buildTimelineEvents(frames: ReplayFrame[]): TimelineEvent[] {
       }
     }
   }
-
-  flushChain(0)
-  flushChain(1)
 
   return events.sort((a, b) => a.time - b.time || a.key.localeCompare(b.key))
 }
