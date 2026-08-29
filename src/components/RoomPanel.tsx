@@ -61,6 +61,7 @@ export function RoomPanel({
   const replayRef = useRef(replay)
   const timelineRef = useRef(currentTimelineMs)
   const followCoachRef = useRef(true)
+  const autoJoinRef = useRef('')
   const [role, setRole] = useState<RoomRole | null>(null)
   const [roomId, setRoomId] = useState('')
   const [joinToken, setJoinToken] = useState('')
@@ -171,6 +172,14 @@ export function RoomPanel({
     setStatus('ルーム参加中…')
     try { await clientRef.current?.join(invite.roomId, invite.joinToken) } catch (caught) { setStatus('接続エラー'); setError(caught instanceof Error ? caught.message : 'ルームに参加できませんでした') }
   }
+
+  useEffect(() => {
+    if (!open || role || !invite) return
+    const key = `${invite.roomId}:${invite.joinToken}`
+    if (autoJoinRef.current === key) return
+    autoJoinRef.current = key
+    void joinRoom()
+  }, [open, role, invite])
 
   const copyInvite = async () => {
     if (!inviteUrl) return
