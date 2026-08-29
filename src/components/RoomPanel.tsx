@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { captureFrame, findFrameAtElapsed, type ReplayState } from '../game/replay'
+import { findFrameAtElapsed, type ReplayState } from '../game/replay'
 import type { GameState, PlayerState, TurnState } from '../game/types'
 import { getRoomInviteFromUrl, RoomClient, type SharedRoomLiveState, type SharedRoomState, type RoomRole } from '../game/room-client'
 import './RoomPanel.css'
@@ -8,9 +8,7 @@ const MAX_SHARED_FRAMES = 2500
 const LIVE_INTERVAL_MS = 150
 
 function compactTurnState(state: TurnState): TurnState {
-  return {
-    ...structuredClone(state),
-  }
+  return structuredClone(state)
 }
 
 function compactPlayer(player: PlayerState): PlayerState {
@@ -62,6 +60,7 @@ export function RoomPanel({
   const gameRef = useRef(game)
   const replayRef = useRef(replay)
   const timelineRef = useRef(currentTimelineMs)
+  const followCoachRef = useRef(true)
   const [role, setRole] = useState<RoomRole | null>(null)
   const [roomId, setRoomId] = useState('')
   const [joinToken, setJoinToken] = useState('')
@@ -74,6 +73,7 @@ export function RoomPanel({
   gameRef.current = game
   replayRef.current = replay
   timelineRef.current = currentTimelineMs
+  followCoachRef.current = followCoach
 
   useEffect(() => {
     const client = new RoomClient()
@@ -92,12 +92,18 @@ export function RoomPanel({
         setStudentCount(message.studentCount)
         setError('')
         if (message.state && message.role === 'student') onRemoteState(message.state)
+        if (message.role === 'student' && window.location.hash) {
+          const url = new URL(window.location.href)
+          url.hash = ''
+          window.history.replaceState(null, '', url.toString())
+          setInvite(null)
+        }
       } else if (message.type === 'presence') {
         setStudentCount(message.studentCount)
       } else if (message.type === 'state') {
         if (message.state && client.role === 'student') onRemoteState(message.state)
       } else if (message.type === 'live-state') {
-        if (client.role === 'student' && followCoach) onRemoteLiveState(message.state)
+        if (message.state && client.role === 'student' && followCoachRef.current) onRemoteLiveState(message.state)
       } else if (message.type === 'error') {
         setStatus('接続エラー')
         setError(message.message)
@@ -108,7 +114,7 @@ export function RoomPanel({
       client.disconnect()
       clientRef.current = null
     }
-  }, [onRemoteLiveState, onRemoteState, followCoach])
+  }, [onRemoteLiveState, onRemoteState])
 
   useEffect(() => {
     setInvite(getRoomInviteFromUrl())
