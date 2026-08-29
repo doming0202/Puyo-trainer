@@ -40,6 +40,15 @@ function isConfiguredGameplayKey(event: KeyboardEvent): boolean {
   })
 }
 
+function isConfiguredPlayerPauseKey(event: KeyboardEvent): boolean {
+  if (event.repeat || event.ctrlKey || event.shiftKey || event.altKey || event.metaKey) return false
+  const target = event.target as HTMLElement | null
+  if (target?.matches('input, textarea, select, [contenteditable="true"]')) return false
+
+  const slots = loadKeybinds()['toggle-player-pause']
+  return slots[0] === event.code || slots[1] === event.code
+}
+
 function ensureOverlay(): HTMLElement {
   let overlay = document.getElementById(OVERLAY_ID)
   if (overlay) return overlay
@@ -208,6 +217,14 @@ function install(): Cleanup {
   const onKeyDown = (event: KeyboardEvent) => {
     if (syntheticResume || event.repeat) return
     if (isGameplayBlocked()) return
+
+    // Never combine the global Pause overlay with the player's X pause.
+    // While the overlay is active, X is consumed and has no game effect.
+    if ((manuallyPaused || timelineAwaitingInput) && isConfiguredPlayerPauseKey(event)) {
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      return
+    }
 
     if (event.code === 'KeyF') {
       if (event.ctrlKey || event.shiftKey || event.altKey || event.metaKey) return
