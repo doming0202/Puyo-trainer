@@ -12,6 +12,14 @@ export interface PuyoSequenceDebugState {
   index: number
 }
 
+export interface PuyoSequenceAnalysis {
+  colorCounts: Record<PuyoColor, number>
+  firstTwoColorCount: number
+  pairSameColorCount: number
+  adjacentSameColorCount: number
+  windowSpread: Record<8 | 16 | 32 | 64, number>
+}
+
 const debugStates: Array<PuyoSequenceDebugState | undefined> = [undefined, undefined]
 
 function normalizeSeed(seed: number): number {
@@ -64,9 +72,6 @@ export function generatePuyoSequence(seed = randomSeed()): Pair[] {
 
   const firstColors = new Set(puyos.slice(0, 4))
   if (firstColors.size === 4) {
-    // Replace the fourth first-cell with the earliest later copy of one of
-    // the already represented colors. The displaced fourth color stays in
-    // the cycle, so all four totals remain exactly 64.
     const keepColor = puyos[0]
     const replacementIndex = puyos.findIndex((color, index) => index >= 4 && color === keepColor)
     if (replacementIndex >= 0) [puyos[3], puyos[replacementIndex]] = [puyos[replacementIndex], puyos[3]]
@@ -98,9 +103,6 @@ export function createPuyoSequence(seed = randomSeed()): PuyoSequenceDebugState 
 }
 
 export function nextSequencePair(state: PuyoSequenceDebugState): { pair: Pair; state: PuyoSequenceDebugState } {
-  // A replay/snapshot restored from a state that predates sequence persistence
-  // may have an undefined sequence at runtime. Recover it instead of crashing.
-  // Recovery intentionally has no opening color restriction.
   const hasSequence = Array.isArray(state.sequence) && state.sequence.length === SEQUENCE_PAIRS
   const normalized: PuyoSequenceDebugState = hasSequence
     ? { ...state, seed: normalizeSeed(state.seed), index: Math.max(0, Math.floor(state.index ?? 0)) }
@@ -141,4 +143,40 @@ export function getFirstTwoPairColorCount(sequence: Pair[]): number {
     colors.add(pair.child)
   }
   return colors.size
+}
+
+function maxMinColorSpread(puyos: PuyoColor[], length: number): number {
+  if (puyos.length < length) return 0
+  let maxSpread = 0
+  for (let start = 0; start + length <= puyos.length; start += 1) {
+    const counts: Record<PuyoColor, number> = { 1: 0, 2: 0, 3: 0, 4: 0 }
+    for (let i = start; i < start + length; i += 1) counts[puyos[i]] += 1
+    const values = COLORS.map((color) => counts[color])
+    maxSpread = Math.max(maxSpread, Math.max(...values) - Math.min(...values))
+  }
+  return maxSpread
+}
+
+/** Measures short-term randomness without changing the generator. */
+export function analyzePuyoSequence(sequence: Pair[]): PuyoSequenceAnalysis {
+  const colorCounts = getSequenceColorCounts(sequence)
+  const puyos = sequence.flatMap((pair) => [pair.axis, pair.child])
+  let pairSameColorCount = 0
+  let adjacentSameColorCount = 0
+
+  for (const pair of sequence) if (pair.axis === pair.child) pairSameColorCount += 1
+  for (let i = 1; i < puyos.length; i += 1) if (puyos[i] === puyos[i - 1]) adjacentSameColorCount += 1
+
+  return {
+    colorCounts,
+    firstTwoColorCount: getFirstTwoPairColorCount(sequence),
+    pairSameColorCount,
+    adjacentSameColorCount,
+    windowSpread: {
+      8: maxMinColorSpread(puyos, 8),
+      16: maxMinColorSpread(puyos, 16),
+      32: maxMinColorSpread(puyos, 32),
+      64: maxMinColorSpread(puyos, 64),
+    },
+  }
 }
