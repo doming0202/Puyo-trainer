@@ -5,14 +5,25 @@ export const ROWS = VISIBLE_ROWS
 export const TOTAL_ROWS = VISIBLE_ROWS + HIDDEN_ROWS
 
 export type PuyoColor = 0 | 1 | 2 | 3 | 4
-/** Runtime-only sentinel. It is stored as a PuyoColor to preserve existing board/replay types. */
+export type GarbageTier = 1 | 2 | 3 | 4 | 5
+/** Runtime-only sentinel family for garbage variants. Values 5..9 encode tiers 1..5. */
 export const GARBAGE_CELL = 5 as unknown as PuyoColor
+export const GARBAGE_TIER_BASE = 5 as unknown as PuyoColor
 export type Cell = PuyoColor | null
 export type Board = Cell[][]
 export type HiddenBoard = Cell[][]
 
 export function isGarbageCell(cell: Cell): boolean {
-  return cell === GARBAGE_CELL
+  return typeof cell === 'number' && cell >= 5 && cell <= 9
+}
+
+export function garbageCellForTier(tier: GarbageTier): PuyoColor {
+  return (GARBAGE_TIER_BASE + tier - 1) as unknown as PuyoColor
+}
+
+export function getGarbageTier(cell: Cell): GarbageTier {
+  if (!isGarbageCell(cell)) return 1
+  return (cell - GARBAGE_TIER_BASE + 1) as GarbageTier
 }
 
 export type Rotation = 0 | 1 | 2 | 3
@@ -20,7 +31,7 @@ export type Rotation = 0 | 1 | 2 | 3
 export interface Pair {
   axis: PuyoColor
   child: PuyoColor
-}
+  } 
 
 export interface ActivePair {
   pair: Pair
