@@ -25,6 +25,7 @@ export function createPlayer(controlMode: PlayerState['controlMode'] = 'human'):
     hidden: emptyHiddenBoard(),
     current: spawnPair(first),
     next: [randomPair(), randomPair(), randomPair(), randomPair()],
+    incomingGarbage: 0,
     garbage: 0,
     score: 0,
     chain: 0,
@@ -182,6 +183,19 @@ export function getGarbageTierForCount(count: number): GarbageTier {
   return 1
 }
 
+/**
+ * Convert one clear result into Puyo Trainer's deliberately simple attack amount.
+ * Four cleared cells make one garbage; each extra chain adds one; each additional
+ * simultaneous color group adds one. This rule is intentionally independent of
+ * any existing game's scoring table and is easy to inspect in replays.
+ */
+export function calculateGarbageAttack(cleared: number, chain: number, groupCount: number): number {
+  const base = Math.floor(Math.max(0, cleared) / 4)
+  const chainBonus = Math.max(0, Math.floor(chain) - 1)
+  const groupBonus = Math.max(0, Math.floor(groupCount) - 1)
+  return Math.max(1, base + chainBonus + groupBonus)
+}
+
 function applyPendingGarbage(player: PlayerState): PlayerState {
   const pending = Math.max(0, Math.floor(player.garbage))
   if (pending === 0) return player
@@ -207,25 +221,30 @@ function applyPendingGarbage(player: PlayerState): PlayerState {
 
   for (const x of placementColumns) {
     if (placeAtTopOfColumn(x)) continue
-    return { ...player, board, hidden, garbage: 0, alive: false, resolution: undefined, fallElapsedMs: 0, lockElapsedMs: 0, quickTurnArmed: false }
+    return { ...player, board, hidden, garbage: 0, incomingGarbage: 0, alive: false, resolution: undefined, fallElapsedMs: 0, lockElapsedMs: 0, quickTurnArmed: false }
   }
 
-  return { ...player, board, hidden, garbage: 0 }
+  return { ...player, board, hidden, garbage: 0, incomingGarbage: 0 }
 }
 
-export function advanceResolution(player: PlayerState): PlayerState {
+export interface ResolutionAdvanceResult {
+  player: PlayerState
+  attack: number
+}
+
+export function advanceResolution(player: PlayerState): ResolutionAdvanceResult {
   const resolution = player.resolution
-  if (!resolution || !player.alive) return player
+  if (!resolution || !player.alive) return { player, attack: 0 }
   if (resolution.stage === 'gravity') {
     const { board, hidden, fallingCells } = applyGravityWithOrigins(player.board, player.hidden)
-    return { ...player, board, hidden, resolution: { stage: 'fall', pendingGroups: [], fallingCells } }
+    return { player: { ...player, board, hidden, resolution: { stage: 'fall', pendingGroups: [], fallingCells } }, attack: 0 }
   }
   if (resolution.stage === 'fall') {
     const groups = findGroups(player.board).filter((group) => group.length >= 4)
-    if (groups.length === 0) return finishPlacement(player)
+    if (groups.length === 0) return { player: finishPlacement(player), attack: 0 }
     const chain = player.chain + 1
     playComboSound(chain)
-    return { ...player, chain, resolution: { stage: 'clear', pendingGroups: groups } }
+    return { player: { ...player, chain, resolution: { stage: 'clear', pendingGroups: groups } }, attack: 0 }
   }
 
   const board = player.board.map((row) => [...row])
@@ -248,17 +267,16 @@ export function advanceResolution(player: PlayerState): PlayerState {
 
   const colorBonus = Math.max(0, resolution.pendingGroups.length - 1) * 3
   const score = player.score + cleared * 10 * Math.max(1, player.chain + colorBonus)
-  return { ...player, board, resolution: { stage: 'gravity', pendingGroups: [] } }
+  const attack = calculateGarbageAttack(cleared, player.chain, resolution.pendingGroups.length)
+  return { player: { ...player, board, resolution: { stage: 'gravity', pendingGroups: [] } }, attack }
 }
 
 function finishPlacement(player: PlayerState): PlayerState {
-  const withGarbage = applyPendingGarbage(player)
-  if (!withGarbage.alive) return withGarbage
-  const nextPair = withGarbage.next[0] ?? randomPair()
-  const next = [...withGarbage.next.slice(1), randomPair()]
+  const nextPair = player.next[0] ?? randomPair()
+  const next = [...player.next.slice(1), randomPair()]
   const nextCurrent = spawnPair(nextPair)
-  if (!canPlace(withGarbage, nextCurrent)) return { ...withGarbage, alive: false, resolution: undefined, fallElapsedMs: 0, lockElapsedMs: 0, quickTurnArmed: false }
-  return startNewTurn({ ...withGarbage, current: nextCurrent, next, resolution: undefined, fallElapsedMs: 0, lockElapsedMs: 0, quickTurnArmed: false })
+  if (!canPlace(player, nextCurrent)) return { ...player, alive: false, resolution: undefined, fallElapsedMs: 0, lockElapsedMs: 0, quickTurnArmed: false }
+  return startNewTurn({ ...player, current: nextCurrent, next, resolution: undefined, fallElapsedMs: 0, lockElapsedMs: 0, quickTurnArmed: false })
 }
 
 function findGroups(board: Board): Array<Array<{ x: number; y: number }>> {
