@@ -21,7 +21,7 @@ type Listener = (message: RoomMessage) => void
 
 type RoomMessage =
   | { type: 'room-created'; roomId: string; role: RoomRole; joinToken: string; hostToken?: string }
-  | { type: 'room-joined'; roomId: string; role: RoomRole; studentCount: number; state: SharedRoomState | null }
+  | { type: 'room-joined'; roomId: string; role: RoomRole; studentCount: number; state: SharedRoomState | null; liveState: SharedRoomLiveState | null }
   | { type: 'state'; state: SharedRoomState | null }
   | { type: 'live-state'; state: SharedRoomLiveState }
   | { type: 'presence'; studentCount: number }
