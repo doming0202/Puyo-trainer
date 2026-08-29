@@ -1,0 +1,282 @@
+name: implement-lightweight-room-state-sync
+
+on:
+  push:
+    paths:
+      - .github/workflows/implement-lightweight-room-state-sync.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch lightweight state synchronization
+        shell: python
+        run: |
+          from pathlib import Path
+
+          # room-client.ts: add a small player-state message and make live-state timeline-only.
+          p = Path('src/game/room-client.ts')
+          text = p.read_text(encoding='utf-8')
+          text = text.replace(
+              "import type { GameState } from './types'\n",
+              "import type { GameState, TurnState } from './types'\n",
+              1,
+          )
+          text = text.replace(
+              "export interface SharedRoomLiveState {\n  game: GameState\n  elapsedMs: number\n  cursorElapsedMs: number\n  playing: boolean\n  speed: number\n}\n",
+              "export interface SharedRoomLiveState {\n  elapsedMs: number\n  cursorElapsedMs: number\n  playing: boolean\n  speed: number\n}\n\nexport type RoomPlayerState = Omit<TurnState, 'puyoSequence'>\n\nexport interface RoomPlayerStateSync {\n  playerIndex: 0 | 1\n  player: RoomPlayerState\n  tick: number\n  activePlayer: 0 | 1\n  running: boolean\n  elapsedMs: number\n}\n",
+              1,
+          )
+          text = text.replace(
+              "  | { type: 'live-state'; state: SharedRoomLiveState }\n",
+              "  | { type: 'live-state'; state: SharedRoomLiveState }\n  | { type: 'player-state'; state: RoomPlayerStateSync }\n",
+              1,
+          )
+          text = text.replace(
+              "  sendLiveState(state: SharedRoomLiveState): void {\n    if (this._role !== 'coach') return\n    this.send({ type: 'live-state', state })\n  }\n",
+              "  sendLiveState(state: SharedRoomLiveState): void {\n    if (this._role !== 'coach') return\n    this.send({ type: 'live-state', state })\n  }\n\n  sendPlayerState(state: RoomPlayerStateSync): void {\n    if (this._role !== 'coach') return\n    this.send({ type: 'player-state', state })\n  }\n",
+              1,
+          )
+          p.write_text(text, encoding='utf-8')
+
+          # App.tsx: receive authoritative player deltas and keep history local.
+          p = Path('src/App.tsx')
+          text = p.read_text(encoding='utf-8')
+          text = text.replace(
+              "import { COLS, ROWS, type Board, type GameState, type PlayerState, type PuyoColor } from './game/types'\n",
+              "import { COLS, ROWS, type Board, type GameState, type PlayerState, type PuyoColor } from './game/types'\nimport { generatePuyoSequence } from './game/puyo-sequence'\n",
+              1,
+          )
+          text = text.replace(
+              "import type { RoomFocusState, SharedRoomLiveState, SharedRoomState } from './game/room-client'\n",
+              "import type { RoomFocusState, RoomPlayerStateSync, SharedRoomLiveState, SharedRoomState } from './game/room-client'\n",
+              1,
+          )
+          anchor = "  const applyRemoteRoomLiveState = useCallback((state: SharedRoomLiveState) => {\n"
+          start = text.index(anchor)
+          end = text.index("  }, [resetClock])\n", start) + len("  }, [resetClock])\n")
+          replacement = """  const applyRemoteRoomLiveState = useCallback((state: SharedRoomLiveState) => {
+    const currentReplay = replayRef.current
+    const cursorElapsed = Math.max(0, state.cursorElapsedMs)
+    const cursor = findFrameAtElapsed(currentReplay.frames, cursorElapsed)
+    const frame = currentReplay.frames[cursor]
+    const nextReplay: ReplayState = { ...currentReplay, cursor, playing: state.playing, speed: state.speed }
+    if (frame) {
+      const nextGame = frameToGame(frame, false)
+      gameRef.current = nextGame
+      setGame(nextGame)
+    }
+    replayRef.current = nextReplay
+    setReplay(nextReplay)
+    resetClock(state.elapsedMs)
+  }, [resetClock])
+
+  const applyRemoteRoomPlayerState = useCallback((state: RoomPlayerStateSync) => {
+    const current = gameRef.current
+    const currentPlayer = current.players[state.playerIndex]
+    const puyoSequence = currentPlayer.puyoSequenceSeed === state.player.puyoSequenceSeed
+      ? currentPlayer.puyoSequence
+      : generatePuyoSequence(state.player.puyoSequenceSeed)
+    const nextPlayer: PlayerState = {
+      ...currentPlayer,
+      ...state.player,
+      puyoSequence,
+    }
+    const players = [...current.players] as [PlayerState, PlayerState]
+    players[state.playerIndex] = nextPlayer
+    const nextGame = {
+      ...current,
+      players,
+      activePlayer: state.activePlayer,
+      running: state.running,
+      tick: Math.max(current.tick, state.tick),
+    }
+    gameRef.current = nextGame
+    setGame(nextGame)
+    resetClock(state.elapsedMs)
+  }, [resetClock])
+"""
+          text = text[:start] + replacement + text[end:]
+          marker = "      } else if (message.type === 'live-state') {\n        if (message.state && client.role === 'student' && followCoachRef.current) onRemoteLiveState(message.state)\n"
+          text = text.replace(
+              marker,
+              marker + "      } else if (message.type === 'player-state') {\n        window.dispatchEvent(new CustomEvent('puyo-room-player-state', { detail: message.state }))\n",
+              1,
+          ) if marker in text else text
+          # Install event bridge in the RoomPanel connection effect section.
+          hook = "  useEffect(() => {\n    const onFocusState = (event: Event) => {\n"
+          insert_at = text.index(hook)
+          bridge = """  useEffect(() => {
+    const onPlayerState = (event: Event) => {
+      const state = (event as CustomEvent<RoomPlayerStateSync>).detail
+      if (!state || (state.playerIndex !== 0 && state.playerIndex !== 1)) return
+      applyRemoteRoomPlayerState(state)
+    }
+    window.addEventListener('puyo-room-player-state', onPlayerState)
+    return () => window.removeEventListener('puyo-room-player-state', onPlayerState)
+  }, [applyRemoteRoomPlayerState])
+
+"""
+          text = text[:insert_at] + bridge + text[insert_at:]
+          # Student action handling should trigger the same lightweight authoritative response from the coach.
+          text = text.replace(
+              "        window.dispatchEvent(new Event('puyo-room-state-changed'))\n        return\n",
+              "        window.dispatchEvent(new CustomEvent('puyo-room-local-action', { detail: { playerIndex: detail.playerIndex, action: detail.action } }))\n        return\n",
+              1,
+          )
+          p.write_text(text, encoding='utf-8')
+
+          # RoomPanel.tsx: serialize only the live TurnState fields, never replay/history.
+          p = Path('src/components/RoomPanel.tsx')
+          text = p.read_text(encoding='utf-8')
+          text = text.replace(
+              "import type { RoomAction, SharedRoomLiveState, SharedRoomState, RoomRole, RoomFocusState } from '../game/room-client'\n",
+              "import type { RoomAction, RoomPlayerState, RoomPlayerStateSync, SharedRoomLiveState, SharedRoomState, RoomRole, RoomFocusState } from '../game/room-client'\n",
+              1,
+          )
+          text = text.replace(
+              "const LIVE_INTERVAL_MS = 150\n",
+              "const LIVE_INTERVAL_MS = 500\n",
+              1,
+          )
+          anchor = "function compactReplay(replay: ReplayState): ReplayState {\n"
+          insert_at = text.index(anchor)
+          helper_end = text.index("}\n\nfunction dispatchFocusState", insert_at) + 2
+          helper = """
+
+function compactPlayerState(player: GameState['players'][number]): RoomPlayerState {
+  const { turnStart: _turnStart, undoStack: _undoStack, redoStack: _redoStack, puyoSequence: _puyoSequence, ...state } = player
+  return structuredClone(state)
+}
+"""
+          text = text[:helper_end] + helper + text[helper_end:]
+          # Message bridge from RoomClient to App.
+          marker = "      } else if (message.type === 'live-state') {\n        if (message.state && client.role === 'student' && followCoachRef.current) onRemoteLiveState(message.state)\n"
+          if marker in text:
+              text = text.replace(marker, marker + "      } else if (message.type === 'player-state') {\n        window.dispatchEvent(new CustomEvent('puyo-room-player-state', { detail: message.state }))\n", 1)
+          # Replace local action handler with action send for students and delta send for coach.
+          old = """    const onLocalAction = (event: Event) => {
+      const detail = (event as CustomEvent<{ playerIndex: 0 | 1; action: RoomAction }>).detail
+      if (!detail || (detail.playerIndex !== 0 && detail.playerIndex !== 1) || typeof detail.action !== 'string') return
+      if (client.role === 'student' && client.focus[detail.playerIndex] === client.memberId) {
+        client.sendAction(detail.playerIndex, detail.action)
+      }
+    }
+"""
+          new = """    const onLocalAction = (event: Event) => {
+      const detail = (event as CustomEvent<{ playerIndex: 0 | 1; action: RoomAction }>).detail
+      if (!detail || (detail.playerIndex !== 0 && detail.playerIndex !== 1) || typeof detail.action !== 'string') return
+      if (client.role === 'student') {
+        if (client.focus[detail.playerIndex] === client.memberId) client.sendAction(detail.playerIndex, detail.action)
+        return
+      }
+      if (client.role === 'coach') {
+        const currentGame = gameRef.current
+        client.sendPlayerState({
+          playerIndex: detail.playerIndex,
+          player: compactPlayerState(currentGame.players[detail.playerIndex]),
+          tick: currentGame.tick,
+          activePlayer: currentGame.activePlayer,
+          running: currentGame.running,
+          elapsedMs: timelineRef.current,
+        })
+      }
+    }
+"""
+          if old not in text:
+              raise SystemExit('RoomPanel local action block not found')
+          text = text.replace(old, new, 1)
+          # Keep live-state tiny and add periodic player-state correction.
+          old_live = """      client.sendLiveState({
+        game: compactGame(gameRef.current),
+        elapsedMs: currentElapsed,
+        cursorElapsedMs: currentReplay.frames[currentReplay.cursor]?.elapsedMs ?? currentElapsed,
+        playing: currentReplay.playing,
+        speed: currentReplay.speed,
+      })
+"""
+          new_live = """      client.sendLiveState({
+        elapsedMs: currentElapsed,
+        cursorElapsedMs: currentReplay.frames[currentReplay.cursor]?.elapsedMs ?? currentElapsed,
+        playing: currentReplay.playing,
+        speed: currentReplay.speed,
+      })
+      for (const playerIndex of [0, 1] as const) {
+        client.sendPlayerState({
+          playerIndex,
+          player: compactPlayerState(gameRef.current.players[playerIndex]),
+          tick: gameRef.current.tick,
+          activePlayer: gameRef.current.activePlayer,
+          running: gameRef.current.running,
+          elapsedMs: currentElapsed,
+        })
+      }
+"""
+          if old_live not in text:
+              raise SystemExit('RoomPanel live-state block not found')
+          text = text.replace(old_live, new_live, 1)
+          # Keep 5-second snapshot for initial/join replay continuity but do not send it after each action.
+          p.write_text(text, encoding='utf-8')
+
+          # server: accept authoritative coach player deltas and keep the cached room state current.
+          p = Path('server/room-server.mjs')
+          text = p.read_text(encoding='utf-8')
+          marker = "  if (message.type === 'live-state' && member.role === 'coach') {\n"
+          server_block = """  if (message.type === 'player-state' && member.role === 'coach') {
+    const state = message.state
+    if (!state || typeof state !== 'object') return
+    const playerIndex = Number(state.playerIndex)
+    if (!Number.isInteger(playerIndex) || playerIndex < 0 || playerIndex > 1) return
+    if (!state.player || typeof state.player !== 'object') return
+
+    if (room.state?.game?.players?.[playerIndex]) {
+      const currentPlayer = room.state.game.players[playerIndex]
+      room.state = {
+        ...room.state,
+        game: {
+          ...room.state.game,
+          players: [
+            playerIndex === 0 ? { ...currentPlayer, ...state.player } : room.state.game.players[0],
+            playerIndex === 1 ? { ...currentPlayer, ...state.player } : room.state.game.players[1],
+          ],
+          activePlayer: state.activePlayer === 1 ? 1 : 0,
+          running: Boolean(state.running),
+          tick: Number.isFinite(state.tick) ? Math.max(room.state.game.tick, state.tick) : room.state.game.tick,
+        },
+        elapsedMs: Number.isFinite(state.elapsedMs) ? Math.max(0, state.elapsedMs) : room.state.elapsedMs,
+      }
+    }
+
+    broadcast(room, { type: 'player-state', state }, socket)
+    return
+  }
+
+"""
+          if marker not in text:
+              raise SystemExit('server live-state anchor not found')
+          text = text.replace(marker, server_block + marker, 1)
+          p.write_text(text, encoding='utf-8')
+
+      - name: Cleanup temporary workflows
+        shell: bash
+        run: |
+          rm -f .github/workflows/implement-lightweight-room-state-sync.yml
+          rm -f .github/workflows/fix-room-sync-lag.yml
+          rm -f .github/workflows/fix-room-sync-lag-v2.yml
+          rm -f .github/workflows/verify-room-sync.yml
+
+      - name: Commit lightweight sync
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/game/room-client.ts src/App.tsx src/components/RoomPanel.tsx server/room-server.mjs .github/workflows
+          git commit -m "Sync lightweight room player state"
+          git push origin HEAD:main
