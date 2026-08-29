@@ -9,14 +9,34 @@ import type { ReplayFrame, ReplayState } from './replay'
  * existing engine code and older serialized data. These helpers are the
  * single boundary for data that leaves the live game session.
  */
-export function stripTransientPlayerState<T extends PlayerState | TurnState>(player: T): T {
-  return { ...player, paused: false }
+function stripTurnState(state: TurnState): TurnState {
+  return {
+    ...structuredClone(state),
+    paused: false,
+  }
+}
+
+export function stripTransientPlayerState(player: PlayerState): PlayerState {
+  const cloned = structuredClone(player)
+  return {
+    ...cloned,
+    paused: false,
+    turnStart: stripTurnState(cloned.turnStart),
+    undoStack: cloned.undoStack.map(stripTurnState),
+    redoStack: cloned.redoStack.map((entry) => ({
+      ...entry,
+      state: stripTurnState(entry.state),
+      turnStart: stripTurnState(entry.turnStart),
+      undoStack: entry.undoStack.map(stripTurnState),
+    })),
+  }
 }
 
 export function gameForPersistence(game: GameState): GameState {
+  const cloned = structuredClone(game)
   return {
-    ...structuredClone(game),
-    players: [stripTransientPlayerState(game.players[0]), stripTransientPlayerState(game.players[1])],
+    ...cloned,
+    players: [stripTransientPlayerState(cloned.players[0]), stripTransientPlayerState(cloned.players[1])],
   }
 }
 
@@ -31,16 +51,26 @@ export function frameForReplay(game: GameState, elapsedMs: number, tick = game.t
 }
 
 export function replayForSharing(replay: ReplayState): ReplayState {
-  const normalizedFrames = replay.frames.map((frame) => ({
+  const cloned = structuredClone(replay)
+  const normalizedFrames = cloned.frames.map((frame) => ({
     ...frame,
     players: [
-      stripTransientPlayerState(structuredClone(frame.players[0])),
-      stripTransientPlayerState(structuredClone(frame.players[1])),
+      stripTransientPlayerState(frame.players[0]),
+      stripTransientPlayerState(frame.players[1]),
+    ],
+  } as ReplayFrame))
+
+  const normalizedOriginalFrames = cloned.originalFrames?.map((frame) => ({
+    ...frame,
+    players: [
+      stripTransientPlayerState(frame.players[0]),
+      stripTransientPlayerState(frame.players[1]),
     ],
   } as ReplayFrame))
 
   return {
-    ...structuredClone(replay),
+    ...cloned,
     frames: normalizedFrames,
+    originalFrames: normalizedOriginalFrames,
   }
 }
