@@ -108,7 +108,7 @@ function startResumeCountdown(resumeEvent: typeof pendingResumeEvent = null): vo
       hideOverlay()
 
       syntheticResume = true
-      document.body.dispatchEvent(new KeyboardEvent('keydown', {
+      document.documentElement.dispatchEvent(new KeyboardEvent('keydown', {
         key: 'f',
         code: 'KeyF',
         bubbles: true,
@@ -120,7 +120,7 @@ function startResumeCountdown(resumeEvent: typeof pendingResumeEvent = null): vo
       pendingResumeEvent = null
       if (eventToResume) {
         window.setTimeout(() => {
-          document.body.dispatchEvent(new KeyboardEvent('keydown', {
+          document.documentElement.dispatchEvent(new KeyboardEvent('keydown', {
             key: eventToResume.key,
             code: eventToResume.code,
             ctrlKey: eventToResume.ctrlKey,
@@ -202,7 +202,7 @@ function install(): void {
         manuallyPaused = true
         setOverlay('Pause')
         syntheticResume = true
-        document.body.dispatchEvent(new KeyboardEvent('keydown', {
+        document.documentElement.dispatchEvent(new KeyboardEvent('keydown', {
           key: event.key,
           code: 'KeyF',
           bubbles: true,
