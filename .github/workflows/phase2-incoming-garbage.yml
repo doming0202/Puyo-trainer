@@ -1,0 +1,140 @@
+name: phase2 incoming garbage
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: ${{ !contains(github.event.head_commit.message, 'feat: implement incoming garbage drop') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Patch engine
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/game/engine.ts')
+          text = path.read_text()
+
+          old_helper = '''function applyPendingGarbage(player: PlayerState): PlayerState {
+            const pending = Math.max(0, Math.floor(player.garbage))
+            if (pending === 0) return player
+
+            const board = player.board.map((row) => [...row])
+            const hidden = player.hidden.map((row) => [...row])
+            const fullRows = Math.floor(pending / COLS)
+            const remainder = pending % COLS
+            const placementColumns: number[] = []
+            const garbageCell = garbageCellForTier(getGarbageTierForCount(pending))
+            for (let row = 0; row < fullRows; row += 1) for (let x = 0; x < COLS; x += 1) placementColumns.push(x)
+            for (let x = 0; x < remainder; x += 1) placementColumns.push(x)
+
+            const placeAtTopOfColumn = (x: number): boolean => {
+              for (let y = ROWS - 1; y >= -HIDDEN_ROWS; y -= 1) {
+                const cell = y >= 0 ? board[y][x] : hidden[y + HIDDEN_ROWS][x]
+                if (cell !== null) continue
+                writeCell(board, hidden, x, y, garbageCell)
+                return true
+              }
+              return false
+            }
+
+            for (const x of placementColumns) {
+              if (placeAtTopOfColumn(x)) continue
+              return { ...player, board, hidden, garbage: 0, incomingGarbage: 0, alive: false, resolution: undefined, fallElapsedMs: 0, lockElapsedMs: 0, quickTurnArmed: false }
+            }
+
+            return { ...player, board, hidden, garbage: 0, incomingGarbage: 0 }
+          }
+'''
+
+          new_helper = '''/**
+           * Phase 2: drop the accumulated incoming garbage onto the board.
+           * This is deliberately applied only after the current turn's
+           * resolution has completely finished and before the next turn starts.
+           */
+          function applyIncomingGarbage(player: PlayerState): PlayerState {
+            const pending = Math.max(0, Math.floor(player.incomingGarbage))
+            if (pending === 0) return player
+
+            const board = player.board.map((row) => [...row])
+            const hidden = player.hidden.map((row) => [...row])
+            const fullRows = Math.floor(pending / COLS)
+            const remainder = pending % COLS
+            const placementColumns: number[] = []
+            const garbageCell = garbageCellForTier(getGarbageTierForCount(pending))
+            for (let row = 0; row < fullRows; row += 1) for (let x = 0; x < COLS; x += 1) placementColumns.push(x)
+            for (let x = 0; x < remainder; x += 1) placementColumns.push(x)
+
+            const placeAtTopOfColumn = (x: number): boolean => {
+              for (let y = ROWS - 1; y >= -HIDDEN_ROWS; y -= 1) {
+                const cell = y >= 0 ? board[y][x] : hidden[y + HIDDEN_ROWS][x]
+                if (cell !== null) continue
+                writeCell(board, hidden, x, y, garbageCell)
+                return true
+              }
+              return false
+            }
+
+            for (const x of placementColumns) {
+              if (placeAtTopOfColumn(x)) continue
+              return { ...player, board, hidden, garbage: 0, incomingGarbage: 0, alive: false, resolution: undefined, fallElapsedMs: 0, lockElapsedMs: 0, quickTurnArmed: false }
+            }
+
+            return { ...player, board, hidden, garbage: 0, incomingGarbage: 0 }
+          }
+'''
+
+          if old_helper not in text:
+              raise SystemExit('incoming garbage helper block not found')
+          text = text.replace(old_helper, new_helper, 1)
+
+          old_finish = '''function finishPlacement(player: PlayerState): PlayerState {
+            const nextPair = player.next[0] ?? randomPair()
+            const next = [...player.next.slice(1), randomPair()]
+            const nextCurrent = spawnPair(nextPair)
+            if (!canPlace(player, nextCurrent)) return { ...player, alive: false, resolution: undefined, fallElapsedMs: 0, lockElapsedMs: 0, quickTurnArmed: false }
+            return startNewTurn({ ...player, current: nextCurrent, next, resolution: undefined, fallElapsedMs: 0, lockElapsedMs: 0, quickTurnArmed: false })
+          }
+'''
+
+          new_finish = '''function finishPlacement(player: PlayerState): PlayerState {
+            // Phase 2: the current turn is fully resolved first; then any
+            // accumulated incoming garbage lands before the next puyo appears.
+            const withGarbage = applyIncomingGarbage(player)
+            if (!withGarbage.alive) return withGarbage
+
+            const nextPair = withGarbage.next[0] ?? randomPair()
+            const next = [...withGarbage.next.slice(1), randomPair()]
+            const nextCurrent = spawnPair(nextPair)
+            if (!canPlace(withGarbage, nextCurrent)) return { ...withGarbage, alive: false, resolution: undefined, fallElapsedMs: 0, lockElapsedMs: 0, quickTurnArmed: false }
+            return startNewTurn({ ...withGarbage, current: nextCurrent, next, resolution: undefined, fallElapsedMs: 0, lockElapsedMs: 0, quickTurnArmed: false })
+          }
+'''
+
+          if old_finish not in text:
+              raise SystemExit('finishPlacement block not found')
+          text = text.replace(old_finish, new_finish, 1)
+
+          if 'applyPendingGarbage' in text:
+              raise SystemExit('legacy garbage helper reference remains')
+
+          path.write_text(text)
+          PY
+
+      - name: Remove patch workflow and commit
+        run: |
+          rm -f .github/workflows/phase2-incoming-garbage.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/game/engine.ts .github/workflows/phase2-incoming-garbage.yml
+          git commit -m "feat: implement incoming garbage drop"
+          git push
