@@ -53,10 +53,6 @@ function cloneTurnState(state: TurnState | undefined, fallback: PlayerState): Tu
   return state
 }
 
-/**
- * Clone only the gameplay state needed by a replay frame.
- * Undo/redo history is immutable and shared instead of deep-cloned per frame.
- */
 export function clonePlayer(player: PlayerState): PlayerState {
   const normalizedTurnStart = cloneTurnState(player.turnStart, player)
   const incomingGarbage = player.incomingGarbage ?? player.garbage ?? 0
@@ -115,10 +111,17 @@ export function appendFrame(replay: ReplayState, game: GameState, elapsedMs?: nu
   const currentFrame = replay.frames[replay.cursor]
   const diverging = replay.cursor < replay.frames.length - 1
 
+  // A branch always inherits the exact timestamp at the fork.  From that point
+  // onward the live clock supplied by App is allowed to advance normally.  Do
+  // not reuse a timestamp from the discarded future, otherwise the new branch
+  // can appear frozen at the seek position.
   const baseElapsed = diverging
     ? (currentFrame?.elapsedMs ?? 0)
     : (replay.frames[replay.frames.length - 1]?.elapsedMs ?? 0)
-  const nextElapsed = Math.max(baseElapsed, elapsedMs ?? baseElapsed)
+  const requestedElapsed = elapsedMs ?? baseElapsed
+  const nextElapsed = diverging
+    ? Math.max(baseElapsed, requestedElapsed)
+    : Math.max(baseElapsed, requestedElapsed)
   const frame = captureFrame(game, nextElapsed)
 
   const last = replay.frames[replay.frames.length - 1]
