@@ -34,10 +34,6 @@ function broadcast(room, message, except) {
   }
 }
 
-function getRole(room, member) {
-  return member.role
-}
-
 function sanitizeState(payload) {
   if (!payload || typeof payload !== 'object') return null
   return payload
@@ -114,7 +110,7 @@ function handleMessage(socket, raw) {
   if (!room || !member) return
   room.lastActiveAt = Date.now()
 
-  if (message.type === 'state' && getRole(room, member) === 'coach') {
+  if (message.type === 'state' && member.role === 'coach') {
     const state = sanitizeState(message.state)
     if (!state) return
     room.state = state
@@ -122,13 +118,15 @@ function handleMessage(socket, raw) {
     return
   }
 
-  if (message.type === 'request-state' && getRole(room, member) === 'student') {
-    send(socket, { type: 'state', state: room.state })
+  if (message.type === 'live-state' && member.role === 'coach') {
+    const state = sanitizeState(message.state)
+    if (!state) return
+    broadcast(room, { type: 'live-state', state }, socket)
     return
   }
 
-  if (message.type === 'coach-command' && getRole(room, member) === 'coach') {
-    broadcast(room, { type: 'coach-command', command: message.command }, socket)
+  if (message.type === 'request-state' && member.role === 'student') {
+    send(socket, { type: 'state', state: room.state })
   }
 }
 
