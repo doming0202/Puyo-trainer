@@ -106,12 +106,44 @@ export class RoomClient {
 
   private connect(): Promise<void> {
     if (this.socket?.readyState === WebSocket.OPEN) return Promise.resolve()
+    if (this.socket && this.socket.readyState === WebSocket.CONNECTING) {
+      return new Promise((resolve, reject) => {
+        const waitForOpen = () => {
+          if (this.socket?.readyState === WebSocket.OPEN) {
+            cleanup()
+            resolve()
+          }
+        }
+        const waitForClose = () => {
+          cleanup()
+          reject(new Error('ルームサーバーへ接続できません'))
+        }
+        const cleanup = () => {
+          this.socket?.removeEventListener('open', waitForOpen)
+          this.socket?.removeEventListener('close', waitForClose)
+          this.socket?.removeEventListener('error', waitForClose)
+        }
+        this.socket.addEventListener('open', waitForOpen)
+        this.socket.addEventListener('close', waitForClose)
+        this.socket.addEventListener('error', waitForClose)
+      })
+    }
+
     return new Promise((resolve, reject) => {
       const socket = new WebSocket(wsUrl())
       this.socket = socket
       let settled = false
-      socket.onopen = () => { if (!settled) { settled = true; resolve() } }
-      socket.onerror = () => { if (!settled) { settled = true; reject(new Error('ルームサーバーへ接続できません')) } }
+      const settleReject = () => {
+        if (settled) return
+        settled = true
+        reject(new Error('ルームサーバーへ接続できません'))
+      }
+      socket.onopen = () => {
+        if (settled) return
+        settled = true
+        resolve()
+      }
+      socket.onerror = settleReject
       socket.onmessage = event => {
         let message: RoomMessage
         try { message = JSON.parse(String(event.data)) as RoomMessage } catch { return }
@@ -122,14 +154,23 @@ export class RoomClient {
             if (message.hostToken) storeHostToken(message.roomId, message.hostToken)
             storeRoomSession(message.roomId, message.joinToken)
           }
-          if (message.type === 'room-joined') this._studentCount = message.studentCount
+          if (message.type === 'room-joined') {
+            this._studentCount = message.studentCount
+            storeRoomSession(message.roomId, message.role === 'coach' ? loadRoomSession()?.joinToken || '' : loadRoomSession()?.joinToken || '')
+          }
         }
         if (message.type === 'presence') this._studentCount = message.studentCount
+        if (message.type === 'error' && (message.code === 'room-not-found' || message.code === 'invalid-token')) {
+          clearRoomSession()
+        }
         this.emit(message)
       }
       socket.onclose = () => {
-        this.socket = null
-        this._role = null
+        if (!settled) settleReject()
+        if (this.socket === socket) {
+          this.socket = null
+          this._role = null
+        }
         this.emit({ type: 'disconnected' })
       }
     })
@@ -147,7 +188,6 @@ export class RoomClient {
   }
 
   async join(roomId: string, joinToken: string): Promise<void> {
-    storeRoomSession(roomId, joinToken)
     await this.connect()
     const hostToken = loadHostToken(roomId)
     this.send({ type: 'join-room', roomId, joinToken, hostToken })
