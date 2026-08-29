@@ -57,13 +57,13 @@ export function generatePuyoSequence(seed = randomSeed()): Pair[] {
   for (const color of COLORS) for (let i = 0; i < SEQUENCE_COLOR_COUNT; i += 1) puyos.push(color)
   shuffle(puyos, random)
 
-  // If the first two pairs contain all four colors, replace one of the four
-  // first cells with a later occurrence of one of the other three colors.
-  // This preserves the exact color totals while guaranteeing <= 3 colors.
   const firstColors = new Set(puyos.slice(0, 4))
   if (firstColors.size === 4) {
-    const replacementColor = puyos[0]
-    const replacementIndex = puyos.findIndex((color, index) => index >= 4 && color !== puyos[3] && color === replacementColor)
+    // Replace the fourth first-cell with the earliest later copy of one of
+    // the already represented colors. The displaced fourth color stays in
+    // the cycle, so all four totals remain exactly 64.
+    const keepColor = puyos[0]
+    const replacementIndex = puyos.findIndex((color, index) => index >= 4 && color === keepColor)
     if (replacementIndex >= 0) [puyos[3], puyos[replacementIndex]] = [puyos[replacementIndex], puyos[3]]
   }
 
@@ -78,11 +78,18 @@ export function createPuyoSequence(seed = randomSeed()): PuyoSequenceDebugState 
 }
 
 export function nextSequencePair(state: PuyoSequenceDebugState): { pair: Pair; state: PuyoSequenceDebugState } {
-  if (state.index < state.sequence.length) {
-    const pair = state.sequence[state.index]
-    return { pair, state: { ...state, index: state.index + 1 } }
+  // Old snapshots / replay frames created before the 128-pair sequence was
+  // introduced may not contain `sequence`. Recover it from the stored seed
+  // instead of letting one such frame crash the whole React tree.
+  const normalized: PuyoSequenceDebugState = Array.isArray(state.sequence) && state.sequence.length === SEQUENCE_PAIRS
+    ? { ...state, seed: normalizeSeed(state.seed), index: Math.max(0, Math.floor(state.index ?? 0)) }
+    : createPuyoSequence(state.seed)
+
+  if (normalized.index < normalized.sequence.length) {
+    const pair = normalized.sequence[normalized.index]
+    return { pair, state: { ...normalized, index: normalized.index + 1 } }
   }
-  const nextCycle = createPuyoSequence(state.seed + 1)
+  const nextCycle = createPuyoSequence(normalized.seed + 1)
   return { pair: nextCycle.sequence[0], state: { ...nextCycle, index: 1 } }
 }
 
