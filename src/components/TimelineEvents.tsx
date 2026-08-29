@@ -14,14 +14,18 @@ export interface TimelineEvent {
 
 function countBoardGarbage(frame: ReplayFrame, playerIndex: 0 | 1): number {
   const player = frame.players[playerIndex]
-  const visible = player.board.reduce((sum, row) => sum + row.filter(isGarbageCell).length, 0)
-  const hidden = player.hidden.reduce((sum, row) => sum + row.filter(isGarbageCell).length, 0)
+  const visible = (player.board ?? []).reduce((sum, row) => sum + (row ?? []).filter(isGarbageCell).length, 0)
+  const hidden = (player.hidden ?? []).reduce((sum, row) => sum + (row ?? []).filter(isGarbageCell).length, 0)
   return visible + hidden
 }
 
 interface ActiveChain {
   maxChain: number
   attack: number
+}
+
+function incomingGarbageOf(player: ReplayFrame['players'][number]): number {
+  return Math.max(0, Math.floor(player.incomingGarbage ?? player.garbage ?? 0))
 }
 
 export function buildTimelineEvents(frames: ReplayFrame[]): TimelineEvent[] {
@@ -56,39 +60,42 @@ export function buildTimelineEvents(frames: ReplayFrame[]): TimelineEvent[] {
   for (let index = 1; index < frames.length; index += 1) {
     const previous = frames[index - 1]
     const current = frames[index]
-    const time = current.elapsedMs
+    const time = Math.max(0, current.elapsedMs ?? 0)
 
-    // まず両プレイヤーの連鎖状態を更新する。これにより、同一フレームで
-    // 連鎖開始と攻撃発生が起きても、攻撃を正しい連鎖へ合算できる。
+    // 連鎖中は途中経過を表示せず、最終連鎖数だけを保持する。
     for (const playerIndex of [0, 1] as const) {
       const currentPlayer = current.players[playerIndex]
-      if (currentPlayer.chain > 0) {
-        if (!activeChains[playerIndex]) activeChains[playerIndex] = { maxChain: currentPlayer.chain, attack: 0 }
-        else activeChains[playerIndex]!.maxChain = Math.max(activeChains[playerIndex]!.maxChain, currentPlayer.chain)
+      const currentChain = Math.max(0, Math.floor(currentPlayer.chain ?? 0))
+      if (currentChain > 0) {
+        if (!activeChains[playerIndex]) {
+          activeChains[playerIndex] = { maxChain: currentChain, attack: 0 }
+        } else {
+          activeChains[playerIndex].maxChain = Math.max(activeChains[playerIndex].maxChain, currentChain)
+        }
       }
     }
 
-    // 連鎖中に発生した攻撃は、個別イベントにせず、その連鎖の合計へ加算する。
-    for (const playerIndex of [0, 1] as const) {
-      const previousPlayer = previous.players[playerIndex]
-      const currentPlayer = current.players[playerIndex]
-      const attackerIndex = playerIndex === 0 ? 1 : 0
-      const incomingDelta = currentPlayer.incomingGarbage - previousPlayer.incomingGarbage
+    // 連鎖中に相手へ送られた攻撃を、その連鎖の合計へ加算する。
+    for (const targetIndex of [0, 1] as const) {
+      const attackerIndex = targetIndex === 0 ? 1 : 0
+      const previousIncoming = incomingGarbageOf(previous.players[targetIndex])
+      const currentIncoming = incomingGarbageOf(current.players[targetIndex])
+      const incomingDelta = currentIncoming - previousIncoming
       if (incomingDelta > 0 && activeChains[attackerIndex]) {
-        activeChains[attackerIndex]!.attack += incomingDelta
+        activeChains[attackerIndex].attack += incomingDelta
       }
     }
 
-    // 連鎖終了時に、最終結果を1イベントとして確定する。
+    // chain > 0 から 0 になった瞬間に、最終結果を1イベントとして確定する。
     for (const playerIndex of [0, 1] as const) {
-      const previousPlayer = previous.players[playerIndex]
-      const currentPlayer = current.players[playerIndex]
-      if (previousPlayer.chain > 0 && currentPlayer.chain <= 0) {
+      const previousChain = Math.max(0, Math.floor(previous.players[playerIndex].chain ?? 0))
+      const currentChain = Math.max(0, Math.floor(current.players[playerIndex].chain ?? 0))
+      if (previousChain > 0 && currentChain <= 0) {
         finishChain(playerIndex, time, index)
       }
     }
 
-    // 妨害ブロック発生: 実際に盤面へ投入された瞬間だけ表示する。
+    // 妨害ブロックは、実際に盤面へ投入された瞬間だけ表示する。
     for (const playerIndex of [0, 1] as const) {
       const playerName = playerIndex === 0 ? 'A' : 'B'
       const boardGarbageDelta = countBoardGarbage(current, playerIndex) - countBoardGarbage(previous, playerIndex)
@@ -104,8 +111,8 @@ export function buildTimelineEvents(frames: ReplayFrame[]): TimelineEvent[] {
     }
   }
 
-  // リプレイ末尾が連鎖中の場合も、そこまでの最終結果を表示する。
-  const lastTime = frames[frames.length - 1].elapsedMs
+  // リプレイ末尾が連鎖中でも、そこまでの最終結果を表示する。
+  const lastTime = Math.max(0, frames[frames.length - 1].elapsedMs ?? 0)
   for (const playerIndex of [0, 1] as const) finishChain(playerIndex, lastTime, frames.length - 1)
 
   const priority: Record<EventKind, number> = { chain: 0, attack: 1, drop: 2 }
