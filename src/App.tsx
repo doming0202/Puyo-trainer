@@ -316,8 +316,8 @@ export default function App() {
     return nextGame
   })
 
-  const setEditedBoard = (board: Board) => { editPlayerState(player => syncEditedBoardWithFalling(player, board)); window.dispatchEvent(new Event('puyo-room-state-changed')) }
-  const setEditedPair = (pair: PairEdit) => { editPlayerState(player => setPairColors(player, pair.axis, pair.child)); window.dispatchEvent(new Event('puyo-room-state-changed')) }
+  const setEditedBoard = (board: Board) => editPlayerState(player => syncEditedBoardWithFalling(player, board))
+  const setEditedPair = (pair: PairEdit) => editPlayerState(player => setPairColors(player, pair.axis, pair.child))
 
   const dispatch = useCallback((action: GameplayAction) => {
     const current = gameRef.current
