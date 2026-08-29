@@ -10,6 +10,12 @@ const SNAPSHOT_LOADED_EVENT = 'puyo-snapshot-loaded'
 const GAME_RESET_EVENT = 'puyo-game-reset'
 const RESUME_ACTIONS: GameplayAction[] = ['left', 'right', 'rotate-left', 'rotate-right', 'soft-drop', 'hard-drop']
 
+type Cleanup = () => void
+
+type PauseOverlayWindow = Window & {
+  __puyoPauseOverlayCleanup?: Cleanup
+}
+
 let manuallyPaused = false
 let timelineAwaitingInput = false
 let countingDown = false
@@ -166,39 +172,40 @@ function pauseAfterSnapshotLoad(): void {
   setOverlay('Pause')
 }
 
-function install(): void {
+function install(): Cleanup {
+  const targetWindow = window as PauseOverlayWindow
+  targetWindow.__puyoPauseOverlayCleanup?.()
+
   ensureOverlay()
 
-  window.addEventListener(TIMELINE_SEEK_EVENT, () => {
+  const onTimelineSeek = () => {
     if (countingDown) return
     timelineAwaitingInput = true
     manuallyPaused = false
     pendingResumeEvent = null
     setOverlay('Pause')
-  })
+  }
 
-  window.addEventListener(SNAPSHOT_LOADED_EVENT, () => {
+  const onSnapshotLoaded = () => {
     pauseAfterSnapshotLoad()
-  })
+  }
 
-  window.addEventListener(GAME_RESET_EVENT, () => {
+  const onGameReset = () => {
     resetPauseState()
-  })
+  }
 
-  // Reset is a React-managed control. Observe only its click so the
-  // overlay's independent state is cleared together with the game state.
-  document.addEventListener('click', (event) => {
-    const target = event.target as HTMLElement | null
-    if (target?.closest('.title-reset-button')) resetPauseState()
-  }, true)
-
-  window.addEventListener(TIMELINE_RESUME_REQUEST_EVENT, (event) => {
+  const onTimelineResumeRequest = (event: Event) => {
     if (!timelineAwaitingInput || countingDown || isGameplayBlocked()) return
     const detail = (event as CustomEvent<typeof pendingResumeEvent>).detail ?? null
     startResumeCountdown(detail)
-  })
+  }
 
-  window.addEventListener('keydown', (event) => {
+  const onClick = (event: MouseEvent) => {
+    const target = event.target as HTMLElement | null
+    if (target?.closest('.title-reset-button')) resetPauseState()
+  }
+
+  const onKeyDown = (event: KeyboardEvent) => {
     if (syntheticResume || event.repeat) return
     if (isGameplayBlocked()) return
 
@@ -251,11 +258,46 @@ function install(): void {
         metaKey: event.metaKey,
       })
     }
-  }, true)
+  }
+
+  window.addEventListener(TIMELINE_SEEK_EVENT, onTimelineSeek)
+  window.addEventListener(SNAPSHOT_LOADED_EVENT, onSnapshotLoaded)
+  window.addEventListener(GAME_RESET_EVENT, onGameReset)
+  window.addEventListener(TIMELINE_RESUME_REQUEST_EVENT, onTimelineResumeRequest)
+  document.addEventListener('click', onClick, true)
+  window.addEventListener('keydown', onKeyDown, true)
+
+  const cleanup = () => {
+    window.removeEventListener(TIMELINE_SEEK_EVENT, onTimelineSeek)
+    window.removeEventListener(SNAPSHOT_LOADED_EVENT, onSnapshotLoaded)
+    window.removeEventListener(GAME_RESET_EVENT, onGameReset)
+    window.removeEventListener(TIMELINE_RESUME_REQUEST_EVENT, onTimelineResumeRequest)
+    document.removeEventListener('click', onClick, true)
+    window.removeEventListener('keydown', onKeyDown, true)
+    resetPauseState()
+    if (targetWindow.__puyoPauseOverlayCleanup === cleanup) delete targetWindow.__puyoPauseOverlayCleanup
+  }
+
+  targetWindow.__puyoPauseOverlayCleanup = cleanup
+  return cleanup
+}
+
+let domReadyCleanup: (() => void) | null = null
+
+const start = () => {
+  domReadyCleanup = install()
 }
 
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', install, { once: true })
+  document.addEventListener('DOMContentLoaded', start, { once: true })
+  const hotCleanup = () => {
+    document.removeEventListener('DOMContentLoaded', start)
+    domReadyCleanup?.()
+    domReadyCleanup = null
+  }
+  const targetWindow = window as PauseOverlayWindow
+  const previousHotCleanup = targetWindow.__puyoPauseOverlayCleanup
+  if (previousHotCleanup) previousHotCleanup()
 } else {
-  install()
+  start()
 }
