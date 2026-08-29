@@ -90,6 +90,7 @@ export class RoomClient {
   private _role: RoomRole | null = null
   private _roomId = ''
   private _studentCount = 0
+  private pendingJoin: { roomId: string; joinToken: string } | null = null
 
   get role(): RoomRole | null { return this._role }
   get roomId(): string { return this._roomId }
@@ -108,24 +109,31 @@ export class RoomClient {
     if (this.socket?.readyState === WebSocket.OPEN) return Promise.resolve()
     if (this.socket && this.socket.readyState === WebSocket.CONNECTING) {
       return new Promise((resolve, reject) => {
+        const socket = this.socket
+        if (!socket) {
+          reject(new Error('ルームサーバーへ接続できません'))
+          return
+        }
+        let settled = false
+        const cleanup = () => {
+          if (settled) return
+          settled = true
+          socket.removeEventListener('open', waitForOpen)
+          socket.removeEventListener('close', waitForClose)
+          socket.removeEventListener('error', waitForClose)
+        }
         const waitForOpen = () => {
-          if (this.socket?.readyState === WebSocket.OPEN) {
-            cleanup()
-            resolve()
-          }
+          if (socket.readyState !== WebSocket.OPEN) return
+          cleanup()
+          resolve()
         }
         const waitForClose = () => {
           cleanup()
           reject(new Error('ルームサーバーへ接続できません'))
         }
-        const cleanup = () => {
-          this.socket?.removeEventListener('open', waitForOpen)
-          this.socket?.removeEventListener('close', waitForClose)
-          this.socket?.removeEventListener('error', waitForClose)
-        }
-        this.socket.addEventListener('open', waitForOpen)
-        this.socket.addEventListener('close', waitForClose)
-        this.socket.addEventListener('error', waitForClose)
+        socket.addEventListener('open', waitForOpen)
+        socket.addEventListener('close', waitForClose)
+        socket.addEventListener('error', waitForClose)
       })
     }
 
@@ -147,21 +155,33 @@ export class RoomClient {
       socket.onmessage = event => {
         let message: RoomMessage
         try { message = JSON.parse(String(event.data)) as RoomMessage } catch { return }
-        if (message.type === 'room-created' || message.type === 'room-joined') {
+        if (message.type === 'room-created') {
           this._role = message.role
           this._roomId = message.roomId
-          if (message.type === 'room-created') {
-            if (message.hostToken) storeHostToken(message.roomId, message.hostToken)
-            storeRoomSession(message.roomId, message.joinToken)
+          if (message.hostToken) storeHostToken(message.roomId, message.hostToken)
+          storeRoomSession(message.roomId, message.joinToken)
+          this.pendingJoin = null
+        } else if (message.type === 'room-joined') {
+          this._role = message.role
+          this._roomId = message.roomId
+          this._studentCount = message.studentCount
+          if (this.pendingJoin?.roomId === message.roomId) {
+            storeRoomSession(message.roomId, this.pendingJoin.joinToken)
           }
-          if (message.type === 'room-joined') {
-            this._studentCount = message.studentCount
-            storeRoomSession(message.roomId, message.role === 'coach' ? loadRoomSession()?.joinToken || '' : loadRoomSession()?.joinToken || '')
-          }
+          this.pendingJoin = null
         }
         if (message.type === 'presence') this._studentCount = message.studentCount
-        if (message.type === 'error' && (message.code === 'room-not-found' || message.code === 'invalid-token')) {
-          clearRoomSession()
+        if (message.type === 'error') {
+          const stored = loadRoomSession()
+          if (
+            (message.code === 'room-not-found' || message.code === 'invalid-token') &&
+            this.pendingJoin &&
+            stored?.roomId === this.pendingJoin.roomId &&
+            stored.joinToken === this.pendingJoin.joinToken
+          ) {
+            clearRoomSession()
+          }
+          this.pendingJoin = null
         }
         this.emit(message)
       }
@@ -183,11 +203,13 @@ export class RoomClient {
 
   async createRoom(): Promise<void> {
     clearRoomSession()
+    this.pendingJoin = null
     await this.connect()
     this.send({ type: 'create-room' })
   }
 
   async join(roomId: string, joinToken: string): Promise<void> {
+    this.pendingJoin = { roomId, joinToken }
     await this.connect()
     const hostToken = loadHostToken(roomId)
     this.send({ type: 'join-room', roomId, joinToken, hostToken })
@@ -196,6 +218,7 @@ export class RoomClient {
   async rejoinStoredRoom(): Promise<boolean> {
     const session = loadRoomSession()
     if (!session) return false
+    this.pendingJoin = session
     await this.connect()
     const hostToken = loadHostToken(session.roomId)
     this.send({ type: 'join-room', roomId: session.roomId, joinToken: session.joinToken, hostToken })
@@ -204,6 +227,7 @@ export class RoomClient {
 
   forgetStoredRoom(): void {
     clearRoomSession()
+    this.pendingJoin = null
   }
 
   sendState(state: SharedRoomState): void {
@@ -217,6 +241,7 @@ export class RoomClient {
   }
 
   disconnect(): void {
+    this.pendingJoin = null
     this.socket?.close()
     this.socket = null
     this._role = null
