@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { analyzePuyoSequence, createPuyoSequence, getFirstTwoPairColorCount, getSequenceColorCounts, SEQUENCE_PAIRS, type PuyoSequenceDebugState } from '../game/puyo-sequence'
+import { generateReferencePuyoSequence } from '../game/puyo-sequence-reference'
 import type { Pair, PuyoColor } from '../game/types'
 import './puyo-sequence-debug.css'
 
@@ -37,6 +38,9 @@ export function PuyoSequenceDebugPanel() {
   const counts = useMemo(() => getSequenceColorCounts(state.sequence), [state.sequence])
   const firstTwoColors = useMemo(() => getFirstTwoPairColorCount(state.sequence), [state.sequence])
   const analysis = useMemo(() => analyzePuyoSequence(state.sequence), [state.sequence])
+  const referenceSequence = useMemo(() => generateReferencePuyoSequence(state.seed), [state.seed])
+  const referenceAnalysis = useMemo(() => analyzePuyoSequence(referenceSequence), [referenceSequence])
+  const referenceCounts = referenceAnalysis.colorCounts
 
   const regenerate = (seed: number) => {
     const next = createPuyoSequence(seed)
@@ -79,6 +83,23 @@ export function PuyoSequenceDebugPanel() {
         <span>64個窓 最大差</span><b>{analysis.windowSpread[64]}</b>
       </div>
       <small>窓内の色数の最大−最小。値が大きいほど局所的な偏りが強い。</small>
+    </div>
+
+    <div className="debug-analysis">
+      <div className="debug-analysis-title">参考モデルとの比較</div>
+      <div className="debug-analysis-grid">
+        <span>モデル</span><b>現行 / 参考</b>
+        <span>赤</span><b>{counts[1]} / {referenceCounts[1]}</b>
+        <span>青</span><b>{counts[2]} / {referenceCounts[2]}</b>
+        <span>緑</span><b>{counts[3]} / {referenceCounts[3]}</b>
+        <span>紫</span><b>{counts[4]} / {referenceCounts[4]}</b>
+        <span>初手2手の色数</span><b>{firstTwoColors} / {referenceAnalysis.firstTwoColorCount}</b>
+        <span>同色ツモ</span><b>{analysis.pairSameColorCount} / {referenceAnalysis.pairSameColorCount}</b>
+        <span>隣接同色</span><b>{analysis.adjacentSameColorCount} / {referenceAnalysis.adjacentSameColorCount}</b>
+        <span>8個窓 最大差</span><b>{analysis.windowSpread[8]} / {referenceAnalysis.windowSpread[8]}</b>
+        <span>16個窓 最大差</span><b>{analysis.windowSpread[16]} / {referenceAnalysis.windowSpread[16]}</b>
+      </div>
+      <small>参考モデルは公開情報を構造化した開発用モデルで、実機の完全再現ではありません。</small>
     </div>
 
     <div className="debug-sequence-grid">
