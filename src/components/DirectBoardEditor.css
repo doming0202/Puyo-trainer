@@ -3,7 +3,7 @@
   left: calc(100% + 18px);
   top: 202px;
   z-index: 30;
-  width: 74px;
+  width: 112px;
   padding: 7px;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -51,8 +51,9 @@
   box-shadow: inset 0 0 0 1px rgba(143, 215, 255, .18), 0 0 0 1px rgba(143, 215, 255, .12);
 }
 
-.direct-editor-palette-button.palette-obstruction {
-  grid-column: 1 / -1;
+.direct-editor-palette-button.palette-obstruction,
+.direct-editor-palette-button.palette-delete {
+  width: 100%;
 }
 
 .direct-editor-palette-dot {
@@ -82,6 +83,20 @@
   transform: translate(-50%, -50%);
   border-radius: 1px;
   border: 1px solid rgba(67, 74, 84, .8);
+}
+
+.direct-editor-palette-delete-mark {
+  width: 13px;
+  height: 13px;
+  min-width: 13px;
+  min-height: 13px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #ffb2b9;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
 }
 
 .direct-editor-cell.selected {
