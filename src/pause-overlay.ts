@@ -185,6 +185,13 @@ function install(): void {
     resetPauseState()
   })
 
+  // Reset is a React-managed control. Observe only its click so the
+  // overlay's independent state is cleared together with the game state.
+  document.addEventListener('click', (event) => {
+    const target = event.target as HTMLElement | null
+    if (target?.closest('.title-reset-button')) resetPauseState()
+  }, true)
+
   window.addEventListener(TIMELINE_RESUME_REQUEST_EVENT, (event) => {
     if (!timelineAwaitingInput || countingDown || isGameplayBlocked()) return
     const detail = (event as CustomEvent<typeof pendingResumeEvent>).detail ?? null
