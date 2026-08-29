@@ -196,8 +196,13 @@ export function calculateGarbageAttack(cleared: number, chain: number, groupCoun
   return Math.max(1, base + chainBonus + groupBonus)
 }
 
-function applyPendingGarbage(player: PlayerState): PlayerState {
-  const pending = Math.max(0, Math.floor(player.garbage))
+/**
+ * Phase 2: drop the accumulated incoming garbage onto the board.
+ * This is deliberately applied only after the current turn's
+ * resolution has completely finished and before the next turn starts.
+ */
+function applyIncomingGarbage(player: PlayerState): PlayerState {
+  const pending = Math.max(0, Math.floor(player.incomingGarbage))
   if (pending === 0) return player
 
   const board = player.board.map((row) => [...row])
@@ -268,15 +273,20 @@ export function advanceResolution(player: PlayerState): ResolutionAdvanceResult 
   const colorBonus = Math.max(0, resolution.pendingGroups.length - 1) * 3
   const score = player.score + cleared * 10 * Math.max(1, player.chain + colorBonus)
   const attack = calculateGarbageAttack(cleared, player.chain, resolution.pendingGroups.length)
-  return { player: { ...player, board, resolution: { stage: 'gravity', pendingGroups: [] } }, attack }
+  return { player: { ...player, board, score, resolution: { stage: 'gravity', pendingGroups: [] } }, attack }
 }
 
 function finishPlacement(player: PlayerState): PlayerState {
-  const nextPair = player.next[0] ?? randomPair()
-  const next = [...player.next.slice(1), randomPair()]
+  // Phase 2: the current turn is fully resolved first; then any
+  // accumulated incoming garbage lands before the next puyo appears.
+  const withGarbage = applyIncomingGarbage(player)
+  if (!withGarbage.alive) return withGarbage
+
+  const nextPair = withGarbage.next[0] ?? randomPair()
+  const next = [...withGarbage.next.slice(1), randomPair()]
   const nextCurrent = spawnPair(nextPair)
-  if (!canPlace(player, nextCurrent)) return { ...player, alive: false, resolution: undefined, fallElapsedMs: 0, lockElapsedMs: 0, quickTurnArmed: false }
-  return startNewTurn({ ...player, current: nextCurrent, next, resolution: undefined, fallElapsedMs: 0, lockElapsedMs: 0, quickTurnArmed: false })
+  if (!canPlace(withGarbage, nextCurrent)) return { ...withGarbage, alive: false, resolution: undefined, fallElapsedMs: 0, lockElapsedMs: 0, quickTurnArmed: false }
+  return startNewTurn({ ...withGarbage, current: nextCurrent, next, resolution: undefined, fallElapsedMs: 0, lockElapsedMs: 0, quickTurnArmed: false })
 }
 
 function findGroups(board: Board): Array<Array<{ x: number; y: number }>> {
