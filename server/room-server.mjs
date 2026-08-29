@@ -241,6 +241,35 @@ function handleMessage(socket, raw) {
     return
   }
 
+  if (message.type === 'player-state' && member.role === 'coach') {
+    const state = message.state
+    if (!state || typeof state !== 'object') return
+    const playerIndex = Number(state.playerIndex)
+    if (!Number.isInteger(playerIndex) || playerIndex < 0 || playerIndex > 1) return
+    if (!state.player || typeof state.player !== 'object') return
+
+    if (room.state?.game?.players?.[playerIndex]) {
+      const currentPlayer = room.state.game.players[playerIndex]
+      room.state = {
+        ...room.state,
+        game: {
+          ...room.state.game,
+          players: [
+            playerIndex === 0 ? { ...currentPlayer, ...state.player } : room.state.game.players[0],
+            playerIndex === 1 ? { ...currentPlayer, ...state.player } : room.state.game.players[1],
+          ],
+          activePlayer: state.activePlayer === 1 ? 1 : 0,
+          running: Boolean(state.running),
+          tick: Number.isFinite(state.tick) ? Math.max(room.state.game.tick, state.tick) : room.state.game.tick,
+        },
+        elapsedMs: Number.isFinite(state.elapsedMs) ? Math.max(0, state.elapsedMs) : room.state.elapsedMs,
+      }
+    }
+
+    broadcast(room, { type: 'player-state', state }, socket)
+    return
+  }
+
   if (message.type === 'live-state' && member.role === 'coach') {
     const state = sanitizeState(message.state)
     if (!state) return

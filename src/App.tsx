@@ -5,7 +5,8 @@ import { appendFrame, captureFrame, clonePlayer, createReplay, findFrameAtElapse
 import { cloneGameState, deleteSnapshot, listSnapshots, makeSnapshot, saveSnapshot, type Snapshot } from './game/snapshots'
 import { loadKeybinds, saveKeybinds, type GameplayAction, type Keybinds } from './game/keybinds'
 import { COLS, ROWS, type Board, type GameState, type PlayerState, type PuyoColor } from './game/types'
-import type { RoomFocusState, SharedRoomLiveState, SharedRoomState } from './game/room-client'
+import { generatePuyoSequence } from './game/puyo-sequence'
+import type { RoomFocusState, RoomPlayerStateSync, SharedRoomLiveState, SharedRoomState } from './game/room-client'
 import { DirectBoardEditor } from './components/DirectBoardEditor'
 import { IncomingGarbageView } from './components/IncomingGarbageView'
 import { KeybindModal } from './components/KeybindModal'
@@ -165,6 +166,16 @@ export default function App() {
   }, [])
 
   useEffect(() => {
+    const onPlayerState = (event: Event) => {
+      const state = (event as CustomEvent<RoomPlayerStateSync>).detail
+      if (!state || (state.playerIndex !== 0 && state.playerIndex !== 1)) return
+      applyRemoteRoomPlayerState(state)
+    }
+    window.addEventListener('puyo-room-player-state', onPlayerState)
+    return () => window.removeEventListener('puyo-room-player-state', onPlayerState)
+  }, [applyRemoteRoomPlayerState])
+
+  useEffect(() => {
     const onFocusState = (event: Event) => {
       const detail = (event as CustomEvent<RoomFocusStateDetail>).detail
       if (!detail) return
@@ -224,20 +235,41 @@ export default function App() {
   }, [resetClock])
 
   const applyRemoteRoomLiveState = useCallback((state: SharedRoomLiveState) => {
-    const nextGame = { ...state.game, running: false }
     const currentReplay = replayRef.current
-    let frames = currentReplay.frames
-    const lastFrame = frames[frames.length - 1]
-    if (!lastFrame || state.elapsedMs > lastFrame.elapsedMs + 90) {
-      frames = [...frames, captureFrame(nextGame, state.elapsedMs)]
-    }
     const cursorElapsed = Math.max(0, state.cursorElapsedMs)
-    const cursor = findFrameAtElapsed(frames, cursorElapsed)
-    const nextReplay: ReplayState = { ...currentReplay, frames, cursor, playing: state.playing, speed: state.speed }
-    gameRef.current = nextGame
+    const cursor = findFrameAtElapsed(currentReplay.frames, cursorElapsed)
+    const frame = currentReplay.frames[cursor]
+    const nextReplay: ReplayState = { ...currentReplay, cursor, playing: state.playing, speed: state.speed }
+    if (frame) {
+      const nextGame = frameToGame(frame, false)
+      gameRef.current = nextGame
+      setGame(nextGame)
+    }
     replayRef.current = nextReplay
-    setGame(nextGame)
     setReplay(nextReplay)
+    resetClock(state.elapsedMs)
+  }, [resetClock])
+
+  const applyRemoteRoomPlayerState = useCallback((state: RoomPlayerStateSync) => {
+    const current = gameRef.current
+    if (state.tick < current.tick) return
+    const currentPlayer = current.players[state.playerIndex]
+    const nextPlayer: PlayerState = {
+      ...currentPlayer,
+      ...state.player,
+      puyoSequence: state.player.puyoSequence,
+    }
+    const players = [...current.players] as [PlayerState, PlayerState]
+    players[state.playerIndex] = nextPlayer
+    const nextGame = {
+      ...current,
+      players,
+      activePlayer: state.activePlayer,
+      running: state.running,
+      tick: state.tick,
+    }
+    gameRef.current = nextGame
+    setGame(nextGame)
     resetClock(state.elapsedMs)
   }, [resetClock])
 
@@ -383,7 +415,7 @@ export default function App() {
       gameRef.current = nextGame
       setGame(nextGame)
       setReplay(state => appendFrame(state, nextGame, elapsedMs))
-      window.dispatchEvent(new Event('puyo-room-state-changed'))
+      window.dispatchEvent(new CustomEvent('puyo-room-local-action', { detail: { playerIndex: detail.playerIndex, action: detail.action } }))
     }
     window.addEventListener('puyo-room-student-action', onStudentAction)
     return () => window.removeEventListener('puyo-room-student-action', onStudentAction)

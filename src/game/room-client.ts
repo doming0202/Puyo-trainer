@@ -1,4 +1,4 @@
-import type { GameState } from './types'
+import type { GameState, TurnState } from './types'
 import type { ReplayState } from './replay'
 import type { GameplayAction } from './keybinds'
 
@@ -13,11 +13,21 @@ export interface SharedRoomState {
 }
 
 export interface SharedRoomLiveState {
-  game: GameState
   elapsedMs: number
   cursorElapsedMs: number
   playing: boolean
   speed: number
+}
+
+export type RoomPlayerState = TurnState
+
+export interface RoomPlayerStateSync {
+  playerIndex: 0 | 1
+  player: RoomPlayerState
+  tick: number
+  activePlayer: 0 | 1
+  running: boolean
+  elapsedMs: number
 }
 
 type Listener = (message: RoomMessage) => void
@@ -27,6 +37,7 @@ type RoomMessage =
   | { type: 'room-joined'; roomId: string; role: RoomRole; memberId: string; studentCount: number; state: SharedRoomState | null; liveState: SharedRoomLiveState | null; focus: RoomFocusState }
   | { type: 'state'; state: SharedRoomState | null }
   | { type: 'live-state'; state: SharedRoomLiveState }
+  | { type: 'player-state'; state: RoomPlayerStateSync }
   | { type: 'presence'; studentCount: number }
   | { type: 'focus-state'; focus: RoomFocusState }
   | { type: 'focus-granted'; playerIndex: 0 | 1; focus: RoomFocusState }
@@ -271,6 +282,11 @@ export class RoomClient {
   sendLiveState(state: SharedRoomLiveState): void {
     if (this._role !== 'coach') return
     this.send({ type: 'live-state', state })
+  }
+
+  sendPlayerState(state: RoomPlayerStateSync): void {
+    if (this._role !== 'coach') return
+    this.send({ type: 'player-state', state })
   }
 
   disconnect(): void {

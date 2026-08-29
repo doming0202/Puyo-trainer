@@ -2,12 +2,12 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { findFrameAtElapsed, type ReplayState } from '../game/replay'
 import { gameForPersistence, replayForSharing } from '../game/state-boundary'
 import type { GameState } from '../game/types'
-import type { RoomAction, SharedRoomLiveState, SharedRoomState, RoomRole, RoomFocusState } from '../game/room-client'
+import type { RoomAction, RoomPlayerState, RoomPlayerStateSync, SharedRoomLiveState, SharedRoomState, RoomRole, RoomFocusState } from '../game/room-client'
 import { getRoomInviteFromUrl, getStoredRoomSession, RoomClient } from '../game/room-client'
 import './RoomPanel.css'
 
 const MAX_SHARED_FRAMES = 2500
-const LIVE_INTERVAL_MS = 150
+const LIVE_INTERVAL_MS = 500
 const SNAPSHOT_INTERVAL_MS = 5000
 
 type FocusRequestDetail = { playerIndex: 0 | 1 }
@@ -29,6 +29,11 @@ function compactReplay(replay: ReplayState): ReplayState {
     playing: replay.playing,
     speed: replay.speed,
   }
+}
+
+function compactPlayerState(player: GameState['players'][number]): RoomPlayerState {
+  const { turnStart: _turnStart, undoStack: _undoStack, redoStack: _redoStack, ...state } = player
+  return structuredClone(state)
 }
 
 function dispatchFocusState(focus: RoomFocusState | null, memberId: string | null, connected: boolean): void {
@@ -129,6 +134,8 @@ export function RoomPanel({
         if (message.state && client.role === 'student') onRemoteState(message.state)
       } else if (message.type === 'live-state') {
         if (message.state && client.role === 'student' && followCoachRef.current) onRemoteLiveState(message.state)
+      } else if (message.type === 'player-state') {
+        window.dispatchEvent(new CustomEvent('puyo-room-player-state', { detail: message.state }))
       } else if (message.type === 'focus-state') {
         dispatchFocusState(message.focus, client.memberId || null, true)
       } else if (message.type === 'focus-granted') {
@@ -163,8 +170,20 @@ export function RoomPanel({
     const onLocalAction = (event: Event) => {
       const detail = (event as CustomEvent<{ playerIndex: 0 | 1; action: RoomAction }>).detail
       if (!detail || (detail.playerIndex !== 0 && detail.playerIndex !== 1) || typeof detail.action !== 'string') return
-      if (client.role === 'student' && client.focus[detail.playerIndex] === client.memberId) {
-        client.sendAction(detail.playerIndex, detail.action)
+      if (client.role === 'student') {
+        if (client.focus[detail.playerIndex] === client.memberId) client.sendAction(detail.playerIndex, detail.action)
+        return
+      }
+      if (client.role === 'coach') {
+        const currentGame = gameRef.current
+        client.sendPlayerState({
+          playerIndex: detail.playerIndex,
+          player: compactPlayerState(currentGame.players[detail.playerIndex]),
+          tick: currentGame.tick,
+          activePlayer: currentGame.activePlayer,
+          running: currentGame.running,
+          elapsedMs: timelineRef.current,
+        })
       }
     }
     window.addEventListener('puyo-room-request-focus', onFocusRequest)
@@ -215,12 +234,21 @@ export function RoomPanel({
         lastSnapshotSyncRef.current = Date.now()
       }
       client.sendLiveState({
-        game: compactGame(gameRef.current),
         elapsedMs: currentElapsed,
         cursorElapsedMs: currentReplay.frames[currentReplay.cursor]?.elapsedMs ?? currentElapsed,
         playing: currentReplay.playing,
         speed: currentReplay.speed,
       })
+      for (const playerIndex of [0, 1]) {
+        client.sendPlayerState({
+          playerIndex,
+          player: compactPlayerState(gameRef.current.players[playerIndex]),
+          tick: gameRef.current.tick,
+          activePlayer: gameRef.current.activePlayer,
+          running: gameRef.current.running,
+          elapsedMs: currentElapsed,
+        })
+      }
     }, LIVE_INTERVAL_MS)
     return () => window.clearInterval(timer)
   }, [open, role])
