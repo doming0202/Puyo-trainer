@@ -39,6 +39,7 @@ function incomingGarbageOf(player: ReplayFrame['players'][number] | undefined): 
 }
 
 export function buildTimelineEvents(frames: ReplayFrame[]): TimelineEvent[] {
+  if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('diagTimeline') === 'off') return []
   if (!Array.isArray(frames) || frames.length < 2) return []
 
   const events: TimelineEvent[] = []
