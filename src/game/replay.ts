@@ -38,7 +38,8 @@ function cloneTurnState(state: TurnState | undefined, fallback: PlayerState): Tu
       hidden: fallback.hidden.map((row) => [...row]),
       current: { ...fallback.current, pair: { ...fallback.current.pair } },
       next: fallback.next.map((pair) => ({ ...pair })),
-      garbage: fallback.garbage,
+      incomingGarbage: fallback.incomingGarbage ?? fallback.garbage ?? 0,
+      garbage: fallback.garbage ?? fallback.incomingGarbage ?? 0,
       score: fallback.score,
       chain: fallback.chain,
       controlMode: fallback.controlMode,
@@ -58,8 +59,12 @@ function cloneTurnState(state: TurnState | undefined, fallback: PlayerState): Tu
  */
 export function clonePlayer(player: PlayerState): PlayerState {
   const normalizedTurnStart = cloneTurnState(player.turnStart, player)
+  const incomingGarbage = player.incomingGarbage ?? player.garbage ?? 0
+  const garbage = player.garbage ?? incomingGarbage
   return {
     ...player,
+    incomingGarbage,
+    garbage,
     board: player.board.map((row) => [...row]),
     hidden: player.hidden.map((row) => [...row]),
     current: { ...player.current, pair: { ...player.current.pair } },
@@ -110,10 +115,6 @@ export function appendFrame(replay: ReplayState, game: GameState, elapsedMs?: nu
   const currentFrame = replay.frames[replay.cursor]
   const diverging = replay.cursor < replay.frames.length - 1
 
-  // When continuing from a rewound position, elapsed time must continue from
-  // that position rather than from the Original timeline's final frame.
-  // Otherwise the first resumed frame jumps to the old timeline end and the
-  // active timeline effectively gets stuck at the bottom.
   const baseElapsed = diverging
     ? (currentFrame?.elapsedMs ?? 0)
     : (replay.frames[replay.frames.length - 1]?.elapsedMs ?? 0)
@@ -131,8 +132,6 @@ export function appendFrame(replay: ReplayState, game: GameState, elapsedMs?: nu
   let originalFrames = replay.originalFrames
   let branchOriginElapsedMs = replay.branchOriginElapsedMs
 
-  // The first edit made after rewinding creates a branch. Keep an immutable
-  // copy of the complete pre-branch timeline before truncating the active one.
   if (diverging && !originalFrames) {
     originalFrames = cloneFrames(replay.frames)
     branchOriginElapsedMs = currentFrame?.elapsedMs ?? 0
