@@ -79,6 +79,8 @@ export interface TurnState {
   score: number
   chain: number
   controlMode: ControlMode
+  /** True when this player's gameplay and resolution are temporarily frozen by X. */
+  paused: boolean
   alive: boolean
   resolution?: ResolutionState
   fallElapsedMs: number
