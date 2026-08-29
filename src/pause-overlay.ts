@@ -150,6 +150,34 @@ function resetPauseState(): void {
   window.dispatchEvent(new Event(TIMELINE_RESUME_CANCEL_EVENT))
 }
 
+function pauseAfterSnapshotLoad(): void {
+  window.setTimeout(() => {
+    if (countingDown) return
+
+    // React finishes applying the loaded state after the click handler.
+    // The timeline's LIVE label lets us determine whether that loaded state
+    // is currently running without mutating React-owned DOM.
+    const isRunning = Array.from(document.querySelectorAll('.timeline-labels span'))
+      .some((node) => node.textContent?.trim() === 'LIVE')
+
+    if (isRunning) {
+      syntheticResume = true
+      document.body.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'f',
+        code: 'KeyF',
+        bubbles: true,
+        cancelable: true,
+      }))
+      syntheticResume = false
+    }
+
+    manuallyPaused = false
+    timelineAwaitingInput = true
+    pendingResumeEvent = null
+    setOverlay('Pause')
+  }, 0)
+}
+
 function install(): void {
   ensureOverlay()
 
@@ -194,7 +222,7 @@ function install(): void {
         syntheticResume = true
         document.body.dispatchEvent(new KeyboardEvent('keydown', {
           key: event.key,
-          code: event.code,
+          code: 'KeyF',
           bubbles: true,
           cancelable: true,
         }))
@@ -235,7 +263,13 @@ function install(): void {
     const button = target.closest('button')
     if (!button) return
     const text = button.textContent?.trim() ?? ''
-    if (text.includes('新しいゲーム') || text.includes('読み込む')) resetPauseState()
+    if (text.includes('新しいゲーム')) {
+      resetPauseState()
+      return
+    }
+    if (text.includes('読み込む')) {
+      pauseAfterSnapshotLoad()
+    }
   })
 }
 
