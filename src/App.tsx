@@ -166,16 +166,6 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    const onPlayerState = (event: Event) => {
-      const state = (event as CustomEvent<RoomPlayerStateSync>).detail
-      if (!state || (state.playerIndex !== 0 && state.playerIndex !== 1)) return
-      applyRemoteRoomPlayerState(state)
-    }
-    window.addEventListener('puyo-room-player-state', onPlayerState)
-    return () => window.removeEventListener('puyo-room-player-state', onPlayerState)
-  }, [applyRemoteRoomPlayerState])
-
-  useEffect(() => {
     const onFocusState = (event: Event) => {
       const detail = (event as CustomEvent<RoomFocusStateDetail>).detail
       if (!detail) return
@@ -272,6 +262,16 @@ export default function App() {
     setGame(nextGame)
     resetClock(state.elapsedMs)
   }, [resetClock])
+
+  useEffect(() => {
+    const onPlayerState = (event: Event) => {
+      const state = (event as CustomEvent<RoomPlayerStateSync>).detail
+      if (!state || (state.playerIndex !== 0 && state.playerIndex !== 1)) return
+      applyRemoteRoomPlayerState(state)
+    }
+    window.addEventListener('puyo-room-player-state', onPlayerState)
+    return () => window.removeEventListener('puyo-room-player-state', onPlayerState)
+  }, [applyRemoteRoomPlayerState])
 
   useEffect(() => {
     const onTimelineSeek = (event: Event) => {
