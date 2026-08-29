@@ -3,7 +3,7 @@ import { findFrameAtElapsed, type ReplayState } from '../game/replay'
 import { gameForPersistence, replayForSharing } from '../game/state-boundary'
 import type { GameState } from '../game/types'
 import type { SharedRoomLiveState, SharedRoomState, RoomRole } from '../game/room-client'
-import { getRoomInviteFromUrl, RoomClient } from '../game/room-client'
+import { getRoomInviteFromUrl, getStoredRoomSession, RoomClient } from '../game/room-client'
 import './RoomPanel.css'
 
 const MAX_SHARED_FRAMES = 2500
@@ -82,6 +82,7 @@ export function RoomPanel({
   const [error, setError] = useState('')
   const [followCoach, setFollowCoach] = useState(true)
   const [invite, setInvite] = useState(() => getRoomInviteFromUrl())
+  const [storedRoom, setStoredRoom] = useState(() => getStoredRoomSession())
 
   gameRef.current = game
   replayRef.current = replay
@@ -96,11 +97,13 @@ export function RoomPanel({
         setRole(message.role)
         setRoomId(message.roomId)
         setJoinToken(message.joinToken)
+        setStoredRoom(getStoredRoomSession())
         setStatus('コーチとして接続中')
         setError('')
       } else if (message.type === 'room-joined') {
         setRole(message.role)
         setRoomId(message.roomId)
+        setStoredRoom(getStoredRoomSession())
         setStatus(message.role === 'coach' ? 'コーチとして接続中' : '生徒として接続中')
         setStudentCount(message.studentCount)
         setError('')
@@ -118,6 +121,11 @@ export function RoomPanel({
         if (message.state && client.role === 'student') onRemoteState(message.state)
       } else if (message.type === 'live-state') {
         if (message.state && client.role === 'student' && followCoachRef.current) onRemoteLiveState(message.state)
+      } else if (message.type === 'disconnected') {
+        setRole(null)
+        setStudentCount(0)
+        setStatus('接続が切れました')
+        setStoredRoom(getStoredRoomSession())
       } else if (message.type === 'error') {
         setStatus('接続エラー')
         setError(message.message)
@@ -132,6 +140,7 @@ export function RoomPanel({
 
   useEffect(() => {
     setInvite(getRoomInviteFromUrl())
+    setStoredRoom(getStoredRoomSession())
   }, [open])
 
   useEffect(() => {
@@ -188,6 +197,18 @@ export function RoomPanel({
     try { await clientRef.current?.join(invite.roomId, invite.joinToken) } catch (caught) { setStatus('接続エラー'); setError(caught instanceof Error ? caught.message : 'ルームに参加できませんでした') }
   }
 
+  const rejoinStoredRoom = async () => {
+    setError('')
+    setStatus('前回のルームへ再接続中…')
+    try {
+      const rejoined = await clientRef.current?.rejoinStoredRoom()
+      if (!rejoined) throw new Error('no-session')
+    } catch (caught) {
+      setStatus('接続エラー')
+      setError(caught instanceof Error && caught.message !== 'no-session' ? caught.message : '保存済みルームへ再接続できませんでした')
+    }
+  }
+
   useEffect(() => {
     if (!open || role || !invite) return
     const key = `${invite.roomId}:${invite.joinToken}`
@@ -208,10 +229,12 @@ export function RoomPanel({
 
   const leaveRoom = () => {
     clientRef.current?.disconnect()
+    clientRef.current?.forgetStoredRoom()
     setRole(null)
     setRoomId('')
     setJoinToken('')
     setStudentCount(0)
+    setStoredRoom(null)
     setStatus('未接続')
     setError('')
   }
@@ -237,6 +260,7 @@ export function RoomPanel({
 
       {!role && <div className="room-actions">
         {hasInvite && <button type="button" onClick={()=>void joinRoom()}>招待ルームに参加</button>}
+        {storedRoom && <button type="button" onClick={()=>void rejoinStoredRoom()}>前回のルームに再接続</button>}
         <button type="button" onClick={()=>void createRoom()}>ルームを作成</button>
       </div>}
 
