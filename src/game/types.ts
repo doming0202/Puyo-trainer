@@ -5,13 +5,13 @@ export const ROWS = VISIBLE_ROWS
 export const TOTAL_ROWS = VISIBLE_ROWS + HIDDEN_ROWS
 
 export type PuyoColor = 0 | 1 | 2 | 3 | 4
-export type GarbageCell = 5
-export const GARBAGE_CELL: GarbageCell = 5
-export type Cell = PuyoColor | GarbageCell | null
+/** Runtime-only sentinel. It is stored as a PuyoColor to preserve existing board/replay types. */
+export const GARBAGE_CELL = 5 as unknown as PuyoColor
+export type Cell = PuyoColor | null
 export type Board = Cell[][]
 export type HiddenBoard = Cell[][]
 
-export function isGarbageCell(cell: Cell): cell is GarbageCell {
+export function isGarbageCell(cell: Cell): boolean {
   return cell === GARBAGE_CELL
 }
 
@@ -40,7 +40,7 @@ export interface FallingCell {
   x: number
   y: number
   fromY: number
-  color: PuyoColor | GarbageCell
+  color: PuyoColor
 }
 
 export interface ResolutionState {
