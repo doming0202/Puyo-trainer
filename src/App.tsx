@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { advancePlayer, advanceResolution, cellsOf, createGame, updatePlayer } from './game/engine'
 import { EDITABLE_COLORS, setGarbage, setNextPair, setPairColors, setPairRotation } from './game/editor'
-import { appendFrame, clonePlayer, createReplay, findFrameAtElapsed, frameToGame, REPLAY_SPEEDS, type ReplayState } from './game/replay'
+import { appendFrame, captureFrame, clonePlayer, createReplay, findFrameAtElapsed, frameToGame, REPLAY_SPEEDS, type ReplayState } from './game/replay'
 import { cloneGameState, deleteSnapshot, listSnapshots, makeSnapshot, saveSnapshot, type Snapshot } from './game/snapshots'
 import { loadKeybinds, saveKeybinds, type GameplayAction, type Keybinds } from './game/keybinds'
 import { COLS, ROWS, type Board, type GameState, type PlayerState, type PuyoColor } from './game/types'
+import type { SharedRoomLiveState, SharedRoomState } from './game/room-client'
 import { DirectBoardEditor } from './components/DirectBoardEditor'
 import { IncomingGarbageView } from './components/IncomingGarbageView'
 import { KeybindModal } from './components/KeybindModal'
+import { RoomPanel } from './components/RoomPanel'
 import { buildTimelineEvents, TimelineEvents } from './components/TimelineEvents'
 import './styles.css'
 
@@ -134,12 +136,19 @@ export default function App() {
   const [keybinds, setKeybinds] = useState<Keybinds>(() => loadKeybinds())
   const [keybindModalOpen, setKeybindModalOpen] = useState(false)
   const [turnCopyBackup, setTurnCopyBackup] = useState<TurnCopyBackup | null>(null)
+  const [roomOpen, setRoomOpen] = useState(false)
   const gameRef = useRef(game); gameRef.current = game
   const replayRef = useRef(replay); replayRef.current = replay
   const elapsedMsRef = useRef(0)
   const clockAtRef = useRef(performance.now())
 
   useEffect(() => { saveKeybinds(keybinds) }, [keybinds])
+
+  useEffect(() => {
+    const hash = window.location.hash.replace(/^#/, '')
+    const params = new URLSearchParams(hash)
+    if (params.get('room') && params.get('token')) setRoomOpen(true)
+  }, [])
 
   const syncElapsed = useCallback((running: boolean) => {
     const now = performance.now()
@@ -153,6 +162,35 @@ export default function App() {
     clockAtRef.current = performance.now()
     setLiveElapsedMs(elapsedMsRef.current)
   }, [])
+
+  const applyRemoteRoomState = useCallback((state: SharedRoomState) => {
+    const nextGame = { ...state.game, running: false }
+    const nextReplay = { ...state.replay, playing: false }
+    gameRef.current = nextGame
+    replayRef.current = nextReplay
+    setGame(nextGame)
+    setReplay(nextReplay)
+    setFocusedPlayer(nextGame.activePlayer)
+    resetClock(state.elapsedMs)
+  }, [resetClock])
+
+  const applyRemoteRoomLiveState = useCallback((state: SharedRoomLiveState) => {
+    const nextGame = { ...state.game, running: false }
+    const currentReplay = replayRef.current
+    let frames = currentReplay.frames
+    const lastFrame = frames[frames.length - 1]
+    if (!lastFrame || state.elapsedMs > lastFrame.elapsedMs + 90) {
+      frames = [...frames, captureFrame(nextGame, state.elapsedMs)]
+    }
+    const cursorElapsed = Math.max(0, state.cursorElapsedMs)
+    const cursor = findFrameAtElapsed(frames, cursorElapsed)
+    const nextReplay: ReplayState = { ...currentReplay, frames, cursor, playing: state.playing, speed: state.speed }
+    gameRef.current = nextGame
+    replayRef.current = nextReplay
+    setGame(nextGame)
+    setReplay(nextReplay)
+    resetClock(state.elapsedMs)
+  }, [resetClock])
 
   useEffect(() => {
     const onTimelineSeek = (event: Event) => {
@@ -458,7 +496,9 @@ export default function App() {
     const restoredGame = cloneGameState(turnCopyBackup.game)
     gameRef.current = restoredGame
     setGame(restoredGame)
-    setReplay(cloneReplayState(turnCopyBackup.replay))
+    const restoredReplay = cloneReplayState(turnCopyBackup.replay)
+    replayRef.current = restoredReplay
+    setReplay(restoredReplay)
     setFocusedPlayer(turnCopyBackup.game.activePlayer)
     resetClock(turnCopyBackup.elapsedMs)
     setTurnCopyBackup(null)
@@ -477,7 +517,9 @@ export default function App() {
     const restored = { ...cloneGameState(snapshot.state), running: false }
     gameRef.current = restored
     setGame(restored)
-    setReplay({ ...createReplay(restored), playing: false })
+    const restoredReplay = { ...createReplay(restored), playing: false }
+    replayRef.current = restoredReplay
+    setReplay(restoredReplay)
     setLibraryOpen(false)
     setEditMode(false)
     setTurnCopyBackup(null)
@@ -499,10 +541,10 @@ export default function App() {
   <section className="snapshot-panel"><div><div className="aside-label">SNAPSHOT</div><strong>現在の局面を保存</strong><span>編集した盤面・組ぷよ・NEXT・おじゃまも保存されます</span></div><div className="snapshot-form"><input value={snapshotTitle} onChange={e=>setSnapshotTitle(e.target.value)} placeholder="局面名（例：2ダブ受け）"/><input value={snapshotTags} onChange={e=>setSnapshotTags(e.target.value)} placeholder="タグ（カンマ区切り）"/><button onClick={()=>void saveCurrentSnapshot()}>保存</button></div></section>
   {libraryOpen && <section className="library-panel"><div className="library-header"><div><div className="aside-label">SNAPSHOT LIBRARY</div><strong>保存局面 {snapshots.length} 件</strong></div><button onClick={()=>setLibraryOpen(false)}>閉じる</button></div>{snapshots.length===0?<div className="empty-library">まだ保存された局面はありません。</div>:<div className="snapshot-list">{snapshots.map(snapshot=><div className="snapshot-item" key={snapshot.id}><div className="snapshot-info"><strong>{snapshot.title}</strong><span>Tick {snapshot.sourceTick} · {new Date(snapshot.createdAt).toLocaleString('ja-JP')}</span>{snapshot.tags.length>0&&<div className="tags">{snapshot.tags.map(tag=><em key={tag}>{tag}</em>)}</div>}</div><div className="snapshot-actions"><button onClick={()=>loadSnapshot(snapshot)}>読み込む</button><button onClick={()=>void removeSnapshot(snapshot.id)}>削除</button></div></div>)}</div>}</section>}
   {message && <div className="status-message">{message}</div>}
-  <section className="arena"><PlayerPanel title="A" player={game.players[0]} focused={focusedPlayer===0} onFocus={()=>focusPlayer(0)} onMode={mode=>setMode(0,mode)} editMode={editMode&&editPlayer===0} onBoardChange={setEditedBoard} onPairEdit={setEditedPair} editableControls={editableControls}/><div className="vs"><span>VS</span><small>LOCAL</small><button className="board-edit-button" disabled={!canCopyDirection(0,1)} onClick={()=>copyPlayerScreen(0,1)}>A→Bをコピー</button><button className="board-edit-button" disabled={!canCopyDirection(1,0)} onClick={()=>copyPlayerScreen(1,0)}>B→Aをコピー</button><button className="board-edit-button" disabled={!turnCopyBackup} onClick={restoreTurnCopy} style={!turnCopyBackup ? { opacity: 0.45, cursor: 'default' } : undefined}>コピー前に戻す</button><button className="board-edit-button" onClick={() => setEditMode(v=>!v)}>{editMode ? '編集終了' : '盤面を直接編集'}</button></div><PlayerPanel title="B" player={game.players[1]} focused={focusedPlayer===1} onFocus={()=>focusPlayer(1)} onMode={mode=>setMode(1,mode)} editMode={editMode&&editPlayer===1} onBoardChange={setEditedBoard} onPairEdit={setEditedPair} editableControls={editableControls}/></section>
+  <section className="arena"><PlayerPanel title="A" player={game.players[0]} focused={focusedPlayer===0} onFocus={()=>focusPlayer(0)} onMode={mode=>setMode(0,mode)} editMode={editMode&&editPlayer===0} onBoardChange={setEditedBoard} onPairEdit={setEditedPair} editableControls={editableControls}/><div className="vs"><span>VS</span><small>LOCAL</small><button className="board-edit-button" onClick={()=>setRoomOpen(true)}>ROOM</button><button className="board-edit-button" disabled={!canCopyDirection(0,1)} onClick={()=>copyPlayerScreen(0,1)}>A→Bをコピー</button><button className="board-edit-button" disabled={!canCopyDirection(1,0)} onClick={()=>copyPlayerScreen(1,0)}>B→Aをコピー</button><button className="board-edit-button" disabled={!turnCopyBackup} onClick={restoreTurnCopy} style={!turnCopyBackup ? { opacity: 0.45, cursor: 'default' } : undefined}>コピー前に戻す</button><button className="board-edit-button" onClick={() => setEditMode(v=>!v)}>{editMode ? '編集終了' : '盤面を直接編集'}</button></div><PlayerPanel title="B" player={game.players[1]} focused={focusedPlayer===1} onFocus={()=>focusPlayer(1)} onMode={mode=>setMode(1,mode)} editMode={editMode&&editPlayer===1} onBoardChange={setEditedBoard} onPairEdit={setEditedPair} editableControls={editableControls}/></section>
   <section className="replay-panel"><div className="replay-header"><div><div className="aside-label">TIMELINE</div><strong>{formatTime(currentTimelineMs)} / {formatTime(timelineMaxMs)}</strong></div><span>Frame {replay.cursor+1} / {replay.frames.length}</span></div><div className="timeline-wrap"><div className="timeline-labels"><span>0:00.0</span><span>{formatTime(currentTimelineMs)}</span><span>{game.running && replay.cursor === lastCursor ? 'LIVE' : formatTime(lastFrame?.elapsedMs ?? 0)}</span></div><TimelineEvents events={timelineEvents} maxTimeMs={timelineMaxMs} onSeek={seekTime}/><input className="timeline" type="range" min="0" max={Math.max(1,timelineMaxMs)} step="10" value={Math.min(currentTimelineMs,Math.max(1,timelineMaxMs))} onChange={e=>seekTime(Number(e.target.value))} disabled={replay.frames.length < 2} aria-label="Game timeline"/></div><div className="replay-controls"><button onClick={()=>seek(0)} disabled={replay.frames.length < 2}>⏮</button><button onClick={()=>seek(replay.cursor-1)} disabled={replay.cursor <= 0}>◀</button><button className="play" onClick={togglePlayback} disabled={replay.frames.length < 2}>{replay.playing?'⏸':'▶'}</button><button onClick={()=>seek(replay.cursor+1)} disabled={replay.cursor >= lastCursor}>▶</button><button onClick={()=>seek(lastCursor)} disabled={replay.frames.length < 2}>⏭</button><div className="speed-buttons">{REPLAY_SPEEDS.map(speed=><button className={replay.speed===speed?'selected':''} key={speed} onClick={()=>setReplay(state=>({...state,speed}))}>{speed}x</button>)}</div></div><div className="replay-hint">タイムラインは常時利用可能 · 盤面をクリックしてフォーカス · Ctrl+1 / Ctrl+2でPlayer切替 · 戻した地点からFキーで再開 · Replay選択時は自動再生</div></section>
-  <section className="controls"><div><strong>フォーカス中のPlayer</strong>　左 / 右 / 回転 / 落下 / ハードドロップを共通キーバインドで操作</div><div><strong>Ctrl+1</strong> Player A　<strong>Ctrl+2</strong> Player B　・　盤面クリックでも切替</div><div><strong>F</strong> ゲーム再開 / 停止　<strong>C</strong> 編集モード切替　<strong>⚙️</strong> キーバインド設定</div><div><strong>X</strong> フォーカス中のPlayerだけ固定 / 再開　·　<strong>A→Bをコピー</strong>　Player Aの局面をPlayer Bへコピー · <strong>B→Aをコピー</strong>　Player Bの局面をPlayer Aへコピー · <strong>コピー前に戻す</strong> で操作前へ復元</div></section>
-  <footer>独自ゲームエンジン · 公式素材・データ不使用 · Phase 4 Position Editor</footer>{keybindModalOpen && <KeybindModal keybinds={keybinds} onChange={setKeybinds} onClose={()=>setKeybindModalOpen(false)} />}</main>
+  <section className="controls"><div><strong>フォーカス中のPlayer</strong>　左 / 右 / 回転 / 落下 / ハードドロップを共通キーバインドで操作</div><div><strong>Ctrl+1</strong> Player A　<strong>Ctrl+2</strong> Player B　・　盤面クリックでも切替</div><div><strong>F</strong> ゲーム再開 / 停止　<strong>X</strong> フォーカス中のPlayerだけ固定 / 再開　<strong>C</strong> 編集モード切替　<strong>⚙️</strong> キーバインド設定</div><div><strong>A→Bをコピー</strong>　Player Aの局面をPlayer Bへコピー · <strong>B→Aをコピー</strong>　Player Bの局面をPlayer Aへコピー · <strong>コピー前に戻す</strong> で操作前へ復元</div></section>
+  <footer>独自ゲームエンジン · 公式素材・データ不使用 · Phase 4 Position Editor</footer>{keybindModalOpen && <KeybindModal keybinds={keybinds} onChange={setKeybinds} onClose={()=>setKeybindModalOpen(false)} />}<RoomPanel open={roomOpen} onClose={()=>setRoomOpen(false)} game={game} replay={replay} currentTimelineMs={currentTimelineMs} onRemoteState={applyRemoteRoomState} onRemoteLiveState={applyRemoteRoomLiveState}/></main>
 }
 
 function PlayerPanel({ title, player, focused, onFocus, onMode, editMode, onBoardChange, onPairEdit, editableControls }: { title:string; player:PlayerState; focused:boolean; onFocus:()=>void; onMode:(mode:PlayerState['controlMode'])=>void; editMode:boolean; onBoardChange:(board:Board)=>void; onPairEdit:(pair:PairEdit)=>void; editableControls:EditControls }) { return <article className="player-card" onMouseDown={onFocus} style={focused ? { borderColor:'#6b829c', boxShadow:'0 18px 50px rgba(0,0,0,.18), 0 0 0 1px rgba(143,215,255,.28)' } : undefined}><div className="player-header"><div><span className="player-label">PLAYER</span><h2>{title}</h2></div><div style={{display:'flex',alignItems:'center',gap:'6px'}}><span className="mode" style={focused ? { border:'1px solid #5f86a7', color:'#8fd7ff' } : undefined}>{player.alive?player.controlMode:'game-over'}</span>{focused&&<span className="aside-label" style={{color:'#8fd7ff'}}>FOCUS</span>}</div></div><div className="game-row"><BoardView player={player} editMode={editMode} focused={focused} onFocus={onFocus} onBoardChange={onBoardChange} onPairEdit={onPairEdit}/><aside><div className="aside-label">NEXT</div><NextView player={player} editable={editMode} onPair={editableControls.changeNext}/><div className="aside-label garbage-label">GARBAGE</div><div className="garbage">{player.incomingGarbage}</div><div className="combo-display"><div className="aside-label combo-label">COMBO</div><strong>{player.chain}</strong></div></aside></div>{editMode&&<div className="direct-edit-bar"><div className="current-pair"><button style={{background:COLOR_MAP[player.current.pair.axis]}} onMouseDown={e=>e.stopPropagation()} onClick={()=>editableControls.changeCurrentColor('axis')}>{COLOR_NAMES[player.current.pair.axis]}</button><button style={{background:COLOR_MAP[player.current.pair.child]}} onMouseDown={e=>e.stopPropagation()} onClick={()=>editableControls.changeCurrentColor('child')}>{COLOR_NAMES[player.current.pair.child]}</button><button onMouseDown={e=>e.stopPropagation()} onClick={()=>editableControls.rotateCurrent(-1)}>↶</button><button onMouseDown={e=>e.stopPropagation()} onClick={()=>editableControls.rotateCurrent(1)}>↷</button></div><div className="garbage-editor"><button onClick={()=>editableControls.changeGarbage(-1)}>−</button><input type="number" min="0" value={player.incomingGarbage} onMouseDown={e=>e.stopPropagation()} onChange={e=>editableControls.setGarbageValue(e.target.value)}/><button onMouseDown={e=>e.stopPropagation()} onClick={()=>editableControls.changeGarbage(1)}>＋</button></div></div>}<div className="mode-buttons">{(['human','fixed','replay','none'] as const).map(mode=><button className={player.controlMode===mode?'selected':''} key={mode} onMouseDown={e=>e.stopPropagation()} onClick={()=>onMode(mode)}>{mode}</button>)}</div></article> }
