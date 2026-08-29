@@ -1,22 +1,161 @@
 import { useEffect, useState, type MouseEvent } from 'react'
-import { COLS, GARBAGE_CELL, ROWS, type Board, type Cell, type PuyoColor } from '../game/types'
+import { COLS, GARBAGE_CELL, ROWS, isGarbageCell, type Board, type PuyoColor } from '../game/types'
+import './DirectBoardEditor.css'
 
 const COLORS: PuyoColor[] = [1, 2, 3, 4]
 const COLOR_NAMES: Record<PuyoColor, string> = { 1: '赤', 2: '青', 3: '緑', 4: '紫' }
 const COLOR_MAP: Record<PuyoColor, string> = { 1: '#ff5b68', 2: '#5aa7ff', 3: '#58d68d', 4: '#b66cff' }
-const SELECTION_COLOR = 'rgba(255, 208, 64, 0.42)'
+const SELECTION_COLOR = 'rgba(255, 159, 67, 0.16)'
 type Point = { x: number; y: number }
-type Pair = { axis: PuyoColor; child: PuyoColor }
 const keyOf = (p: Point) => `${p.x},${p.y}`
-const rangeKeys = (a: Point, b: Point) => { const out: string[] = []; for (let y = Math.min(a.y,b.y); y <= Math.max(a.y,b.y); y++) for (let x = Math.min(a.x,b.x); x <= Math.max(a.x,b.x); x++) out.push(`${x},${y}`); return out }
+const rangeKeys = (a: Point, b: Point) => {
+  const out: string[] = []
+  for (let y = Math.min(a.y, b.y); y <= Math.max(a.y, b.y); y += 1) {
+    for (let x = Math.min(a.x, b.x); x <= Math.max(a.x, b.x); x += 1) out.push(`${x},${y}`)
+  }
+  return out
+}
 
-export function DirectBoardEditor({ board, onBoardChange, onPairEdit }: { board: Board; onBoardChange: (board: Board) => void; onPairEdit: (pair: Pair) => void }) {
-  const [selected, setSelected] = useState<Set<string>>(new Set()); const [anchor, setAnchor] = useState<Point | null>(null); const [dragging, setDragging] = useState(false); const [menu, setMenu] = useState<{x:number;y:number}|null>(null); const [pairAxis, setPairAxis] = useState<PuyoColor | null>(null)
-  useEffect(() => { const onKey=(e:KeyboardEvent)=>{if(e.key!=='Delete'||!selected.size)return;e.preventDefault();const next=board.map(r=>[...r]);selected.forEach(k=>{const[x,y]=k.split(',').map(Number);next[y][x]=null});onBoardChange(next);setSelected(new Set());setMenu(null)};const up=()=>setDragging(false);window.addEventListener('keydown',onKey);window.addEventListener('mouseup',up);return()=>{window.removeEventListener('keydown',onKey);window.removeEventListener('mouseup',up)} },[board,onBoardChange,selected])
-  const select=(p:Point,e:MouseEvent)=>{setMenu(null);if(e.shiftKey&&anchor){setSelected(new Set(rangeKeys(anchor,p)));return}if(e.ctrlKey||e.metaKey){setSelected(cur=>{const n=new Set(cur),k=keyOf(p);n.has(k)?n.delete(k):n.add(k);return n});setAnchor(p);return}setSelected(new Set([keyOf(p)]));setAnchor(p)}
-  const paint=(cell:Cell)=>{if(!selected.size)return;const next=board.map(r=>[...r]);selected.forEach(k=>{const[x,y]=k.split(',').map(Number);next[y][x]=cell});onBoardChange(next);setSelected(new Set());setMenu(null);setPairAxis(null)}
-  const choosePair=(child:PuyoColor)=>{if(pairAxis===null)return;onPairEdit({axis:pairAxis,child});paint(pairAxis)}
-  const context=(e:MouseEvent,p:Point)=>{e.preventDefault();if(!selected.has(keyOf(p)))setSelected(new Set([keyOf(p)]));setAnchor(p);setPairAxis(null);setMenu({x:e.clientX,y:e.clientY})}
-  const multipleSelected = selected.size >= 2
-  return <><div className="direct-editor-overlay" onMouseLeave={()=>dragging&&setDragging(false)}>{Array.from({length:ROWS*COLS},(_,i)=>{const p={x:i%COLS,y:Math.floor(i/COLS)},k=keyOf(p);const hasPuyo=board[p.y][p.x]!==null;const isSelected=selected.has(k);return <div key={k} className={`direct-editor-cell ${isSelected?'selected':''}`} style={{ position: 'relative', ...(isSelected ? { background: SELECTION_COLOR, boxShadow: 'inset 0 0 0 1px rgba(255, 224, 96, 0.9)' } : {}) }} onMouseDown={e=>{if(e.button!==0)return;e.preventDefault();select(p,e);setDragging(true)}} onMouseEnter={()=>{if(dragging&&anchor)setSelected(new Set(rangeKeys(anchor,p)))}} onContextMenu={e=>context(e,p)}>{isSelected&&hasPuyo&&<span aria-hidden="true" style={{ position: 'absolute', inset: 0, border: '1px solid rgba(255, 232, 128, 0.55)', boxSizing: 'border-box', pointerEvents: 'none' }} />}</div>})}</div>{selected.size>0&&<div className="direct-editor-selection">選択 {selected.size}マス</div>}{menu&&<div className="direct-editor-menu" style={{left:menu.x,top:menu.y}} onMouseDown={e=>e.stopPropagation()}>{pairAxis===null?<><div className="context-title">{multipleSelected?'色を指定':'色を選択'}</div><div className="context-colors">{COLORS.map(c=><button key={c} className="context-color" onClick={()=>multipleSelected?paint(c):setPairAxis(c)}><span className="context-dot" style={{background:COLOR_MAP[c]}}/>{COLOR_NAMES[c]}</button>)}</div><button className="context-color" onClick={()=>paint(GARBAGE_CELL)}><span className="context-dot garbage-dot"/>おじゃま</button><button className="context-clear" onClick={()=>paint(null)}>消去</button></>:<><button className="context-back" onClick={()=>setPairAxis(null)}>← 色を戻す</button><div className="context-title">{COLOR_NAMES[pairAxis]} × 組み合わせ</div><div className="pair-grid">{COLORS.map(child=><button key={child} className="pair-option" onClick={()=>choosePair(child)}><span className="context-dot" style={{background:COLOR_MAP[pairAxis]}}/><span className="pair-x">×</span><span className="context-dot" style={{background:COLOR_MAP[child]}}/><small>{COLOR_NAMES[pairAxis]}×{COLOR_NAMES[child]}</small></button>)}</div></>}</div>}</>
+function paletteKey(color: PuyoColor): PuyoColor {
+  return isGarbageCell(color) ? GARBAGE_CELL : color
+}
+
+function selectionColor(board: Board, selected: Set<string>): PuyoColor | null {
+  if (selected.size === 0) return null
+  let first: PuyoColor | null = null
+  for (const key of selected) {
+    const [x, y] = key.split(',').map(Number)
+    const cell = board[y]?.[x] ?? null
+    if (cell === null) return null
+    const normalized = paletteKey(cell)
+    if (first === null) first = normalized
+    else if (first !== normalized) return null
+  }
+  return first
+}
+
+export function DirectBoardEditor({ board, onBoardChange, onPairEdit: _onPairEdit }: { board: Board; onBoardChange: (board: Board) => void; onPairEdit: (pair: { axis: PuyoColor; child: PuyoColor }) => void }) {
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [anchor, setAnchor] = useState<Point | null>(null)
+  const [dragging, setDragging] = useState(false)
+  const [paintColor, setPaintColor] = useState<PuyoColor>(1)
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Delete' || !selected.size) return
+      event.preventDefault()
+      const next = board.map((row) => [...row])
+      selected.forEach((key) => {
+        const [x, y] = key.split(',').map(Number)
+        next[y][x] = null
+      })
+      onBoardChange(next)
+      setSelected(new Set())
+    }
+    const up = () => setDragging(false)
+    window.addEventListener('keydown', onKey)
+    window.addEventListener('mouseup', up)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('mouseup', up)
+    }
+  }, [board, onBoardChange, selected])
+
+  const select = (point: Point, event: MouseEvent) => {
+    if (event.shiftKey && anchor) {
+      const next = new Set(rangeKeys(anchor, point))
+      setSelected(next)
+      const inferred = selectionColor(board, next)
+      if (inferred !== null) setPaintColor(inferred)
+      return
+    }
+
+    if (event.ctrlKey || event.metaKey) {
+      const next = new Set(selected)
+      const key = keyOf(point)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      setSelected(next)
+      setAnchor(point)
+      const inferred = selectionColor(board, next)
+      if (inferred !== null) setPaintColor(inferred)
+      return
+    }
+
+    const next = new Set([keyOf(point)])
+    setSelected(next)
+    setAnchor(point)
+    const inferred = selectionColor(board, next)
+    if (inferred !== null) setPaintColor(inferred)
+  }
+
+  const applyPaint = (color: PuyoColor) => {
+    setPaintColor(color)
+    if (!selected.size) return
+    const next = board.map((row) => [...row])
+    selected.forEach((key) => {
+      const [x, y] = key.split(',').map(Number)
+      next[y][x] = color
+    })
+    onBoardChange(next)
+  }
+
+  return <>
+    <div className="direct-editor-overlay" onMouseLeave={() => dragging && setDragging(false)}>
+      {Array.from({ length: ROWS * COLS }, (_, index) => {
+        const point = { x: index % COLS, y: Math.floor(index / COLS) }
+        const key = keyOf(point)
+        const hasPuyo = board[point.y][point.x] !== null
+        const isSelected = selected.has(key)
+        return <div
+          key={key}
+          className={`direct-editor-cell ${isSelected ? 'selected' : ''}`}
+          style={isSelected ? { background: SELECTION_COLOR } : undefined}
+          onMouseDown={(event) => {
+            if (event.button !== 0) return
+            event.preventDefault()
+            select(point, event)
+            setDragging(true)
+          }}
+          onMouseEnter={() => {
+            if (dragging && anchor) setSelected(new Set(rangeKeys(anchor, point)))
+          }}
+          onContextMenu={(event) => event.preventDefault()}
+        >
+          {isSelected && hasPuyo && <span className="direct-editor-selection-frame" aria-hidden="true" />}
+        </div>
+      })}
+    </div>
+
+    {selected.size > 0 && <div className="direct-editor-selection">選択 {selected.size}マス</div>}
+
+    <div className="direct-editor-palette" aria-label="編集用カラーパレット">
+      <div className="direct-editor-palette-title">COLOR</div>
+      {COLORS.map((color) => (
+        <button
+          key={color}
+          type="button"
+          className={`direct-editor-palette-button ${paintColor === color ? 'selected' : ''}`}
+          title={`${COLOR_NAMES[color]}を選択範囲へ適用`}
+          aria-pressed={paintColor === color}
+          onMouseDown={(event) => event.stopPropagation()}
+          onClick={() => applyPaint(color)}
+        >
+          <span className="direct-editor-palette-dot" style={{ background: COLOR_MAP[color] }} />
+          <span>{COLOR_NAMES[color]}</span>
+        </button>
+      ))}
+      <button
+        type="button"
+        className={`direct-editor-palette-button garbage ${paintColor === GARBAGE_CELL ? 'selected' : ''}`}
+        title="おじゃまを選択範囲へ適用"
+        aria-pressed={paintColor === GARBAGE_CELL}
+        onMouseDown={(event) => event.stopPropagation()}
+        onClick={() => applyPaint(GARBAGE_CELL)}
+      >
+        <span className="direct-editor-palette-dot garbage" />
+        <span>おじゃま</span>
+      </button>
+    </div>
+  </>
 }
