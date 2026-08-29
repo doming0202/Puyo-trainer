@@ -1,4 +1,5 @@
 import type { GameState, PlayerState, TurnState } from './types'
+import { createPuyoSequence, SEQUENCE_PAIRS } from './puyo-sequence'
 
 export interface ReplayFrame {
   tick: number
@@ -36,6 +37,9 @@ function cloneTurnState(state: TurnState | undefined, fallback: PlayerState): Tu
       hidden: fallback.hidden.map((row) => [...row]),
       current: { ...fallback.current, pair: { ...fallback.current.pair } },
       next: fallback.next.map((pair) => ({ ...pair })),
+      puyoSequence: Array.isArray(fallback.puyoSequence) ? fallback.puyoSequence.map((pair) => ({ ...pair })) : createPuyoSequence(fallback.puyoSequenceSeed).sequence,
+      puyoSequenceIndex: Math.max(0, Math.floor(fallback.puyoSequenceIndex ?? 0)),
+      puyoSequenceSeed: fallback.puyoSequenceSeed ?? createPuyoSequence().seed,
       incomingGarbage: fallback.incomingGarbage ?? fallback.garbage ?? 0,
       garbage: fallback.garbage ?? fallback.incomingGarbage ?? 0,
       score: fallback.score,
@@ -48,17 +52,38 @@ function cloneTurnState(state: TurnState | undefined, fallback: PlayerState): Tu
       quickTurnArmed: fallback.quickTurnArmed ?? false,
     }
   }
-  return state
+  const sequence = Array.isArray(state.puyoSequence) && state.puyoSequence.length === SEQUENCE_PAIRS
+    ? state.puyoSequence.map((pair) => ({ ...pair }))
+    : (Array.isArray(fallback.puyoSequence) && fallback.puyoSequence.length === SEQUENCE_PAIRS
+      ? fallback.puyoSequence.map((pair) => ({ ...pair }))
+      : createPuyoSequence(state.puyoSequenceSeed ?? fallback.puyoSequenceSeed).sequence)
+  return {
+    ...state,
+    board: state.board.map((row) => [...row]),
+    hidden: state.hidden.map((row) => [...row]),
+    current: { ...state.current, pair: { ...state.current.pair } },
+    next: state.next.map((pair) => ({ ...pair })),
+    puyoSequence: sequence,
+    puyoSequenceIndex: Math.max(0, Math.floor(state.puyoSequenceIndex ?? fallback.puyoSequenceIndex ?? 0)),
+    puyoSequenceSeed: state.puyoSequenceSeed ?? fallback.puyoSequenceSeed,
+    resolution: state.resolution ? structuredClone(state.resolution) : undefined,
+  }
 }
 
 export function clonePlayer(player: PlayerState): PlayerState {
   const normalizedTurnStart = cloneTurnState(player.turnStart, player)
   const incomingGarbage = player.incomingGarbage ?? player.garbage ?? 0
   const garbage = player.garbage ?? incomingGarbage
+  const sequence = Array.isArray(player.puyoSequence) && player.puyoSequence.length === SEQUENCE_PAIRS
+    ? player.puyoSequence.map((pair) => ({ ...pair }))
+    : createPuyoSequence(player.puyoSequenceSeed).sequence
   return {
     ...player,
     incomingGarbage,
     garbage,
+    puyoSequence: sequence,
+    puyoSequenceIndex: Math.max(0, Math.floor(player.puyoSequenceIndex ?? 0)),
+    puyoSequenceSeed: player.puyoSequenceSeed ?? createPuyoSequence().seed,
     board: player.board.map((row) => [...row]),
     hidden: player.hidden.map((row) => [...row]),
     current: { ...player.current, pair: { ...player.current.pair } },
@@ -67,8 +92,13 @@ export function clonePlayer(player: PlayerState): PlayerState {
     lockElapsedMs: player.lockElapsedMs ?? 0,
     quickTurnArmed: player.quickTurnArmed ?? false,
     turnStart: normalizedTurnStart,
-    undoStack: player.undoStack ?? [],
-    redoStack: player.redoStack ?? [],
+    undoStack: (player.undoStack ?? []).map((state) => cloneTurnState(state, player)),
+    redoStack: (player.redoStack ?? []).map((entry) => ({
+      ...entry,
+      state: cloneTurnState(entry.state, player),
+      turnStart: cloneTurnState(entry.turnStart, player),
+      undoStack: (entry.undoStack ?? []).map((state) => cloneTurnState(state, player)),
+    })),
   }
 }
 
@@ -112,11 +142,6 @@ export function appendFrame(replay: ReplayState, game: GameState, elapsedMs?: nu
     ? (currentFrame?.elapsedMs ?? 0)
     : (replay.frames[replay.frames.length - 1]?.elapsedMs ?? 0)
   const requestedElapsed = elapsedMs ?? baseElapsed
-
-  // A manual operation immediately after seeking must create a genuinely new
-  // point on the live timeline.  Give the first branch frame a small monotonic
-  // advance even when the input arrives in the same millisecond as the seek;
-  // subsequent frames use the normal live clock supplied by App.
   const nextElapsed = diverging
     ? Math.max(baseElapsed + 50, requestedElapsed)
     : Math.max(baseElapsed, requestedElapsed)
@@ -132,7 +157,6 @@ export function appendFrame(replay: ReplayState, game: GameState, elapsedMs?: nu
 
   let originalFrames = replay.originalFrames
   let branchOriginElapsedMs = replay.branchOriginElapsedMs
-
   if (diverging && !originalFrames) {
     originalFrames = cloneFrames(replay.frames)
     branchOriginElapsedMs = currentFrame?.elapsedMs ?? 0
@@ -144,13 +168,7 @@ export function appendFrame(replay: ReplayState, game: GameState, elapsedMs?: nu
 
   const frames = replay.frames.slice(0, replay.cursor + 1)
   frames.push(frame)
-  return {
-    ...replay,
-    frames,
-    cursor: frames.length - 1,
-    originalFrames,
-    branchOriginElapsedMs,
-  }
+  return { ...replay, frames, cursor: frames.length - 1, originalFrames, branchOriginElapsedMs }
 }
 
 export function frameToGame(frame: ReplayFrame, running = false): GameState {
