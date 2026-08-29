@@ -14,6 +14,7 @@ const ACTIONS: Array<[GameplayAction, string]> = [
   ['reset-turn', '現在のぷよを最初から'],
   ['undo', '一手戻す'],
   ['redo', 'やり直す'],
+  ['toggle-player-pause', '片側固定 / 再開'],
 ]
 
 function keyText(action: GameplayAction): string {
