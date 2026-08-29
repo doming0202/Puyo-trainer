@@ -1,6 +1,7 @@
 import './keyboard-startup-buffer'
 import './keyboard-focus-guard'
 import './keyboard-guide'
+import './realtime-room-patch'
 import './title-reset.css'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
