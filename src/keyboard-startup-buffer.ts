@@ -1,9 +1,8 @@
-const ROOT_ID = 'root'
+const READY_EVENT = 'puyo-trainer-keyboard-ready'
 const STARTUP_TIMEOUT_MS = 1800
-const FLUSH_DELAY_MS = 60
 
 let startupActive = true
-let flushTimer: number | null = null
+let fallbackTimer: number | null = null
 const bufferedEvents: Array<{
   key: string
   code: string
@@ -38,9 +37,9 @@ function queue(event: KeyboardEvent): void {
 function flush(): void {
   if (!startupActive) return
   startupActive = false
-  if (flushTimer !== null) {
-    window.clearTimeout(flushTimer)
-    flushTimer = null
+  if (fallbackTimer !== null) {
+    window.clearTimeout(fallbackTimer)
+    fallbackTimer = null
   }
 
   const events = bufferedEvents.splice(0)
@@ -53,11 +52,6 @@ function flush(): void {
   }
 }
 
-function scheduleFlush(): void {
-  if (!startupActive || flushTimer !== null) return
-  flushTimer = window.setTimeout(flush, FLUSH_DELAY_MS)
-}
-
 window.addEventListener('keydown', (event) => {
   if (!shouldBuffer(event)) return
   queue(event)
@@ -65,16 +59,5 @@ window.addEventListener('keydown', (event) => {
   event.stopImmediatePropagation()
 }, true)
 
-const root = document.getElementById(ROOT_ID)
-if (root) {
-  const observer = new MutationObserver(() => {
-    if (root.childElementCount > 0) {
-      scheduleFlush()
-      observer.disconnect()
-    }
-  })
-  observer.observe(root, { childList: true })
-  if (root.childElementCount > 0) scheduleFlush()
-}
-
-window.setTimeout(() => flush(), STARTUP_TIMEOUT_MS)
+window.addEventListener(READY_EVENT, flush, { once: true })
+fallbackTimer = window.setTimeout(flush, STARTUP_TIMEOUT_MS)
