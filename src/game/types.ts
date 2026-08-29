@@ -5,9 +5,15 @@ export const ROWS = VISIBLE_ROWS
 export const TOTAL_ROWS = VISIBLE_ROWS + HIDDEN_ROWS
 
 export type PuyoColor = 0 | 1 | 2 | 3 | 4
-export type Cell = PuyoColor | null
+export type GarbageCell = 5
+export const GARBAGE_CELL: GarbageCell = 5
+export type Cell = PuyoColor | GarbageCell | null
 export type Board = Cell[][]
 export type HiddenBoard = Cell[][]
+
+export function isGarbageCell(cell: Cell): cell is GarbageCell {
+  return cell === GARBAGE_CELL
+}
 
 export type Rotation = 0 | 1 | 2 | 3
 
@@ -34,7 +40,7 @@ export interface FallingCell {
   x: number
   y: number
   fromY: number
-  color: PuyoColor
+  color: PuyoColor | GarbageCell
 }
 
 export interface ResolutionState {
