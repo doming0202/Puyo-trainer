@@ -50,10 +50,6 @@ jobs:
                   "  sendState(state: SharedRoomState): void {\n",
                   "  sendAction(playerIndex: 0 | 1, action: RoomAction): void {\n    if (this._role !== 'student') return\n    this.send({ type: 'student-action', playerIndex, action })\n  }\n\n  sendState(state: SharedRoomState): void {\n",
               ),
-              (
-                  "  sendLiveState(state: SharedRoomLiveState): void {\n",
-                  "  sendLiveState(state: SharedRoomLiveState): void {\n",
-              ),
           ])
 
           patch('server/room-server.mjs', [
@@ -93,7 +89,6 @@ jobs:
               ),
           ])
 
-          # A state change caused by local board/pair editing should also be published immediately.
           patch('src/App.tsx', [
               (
                   "  const setEditedBoard = (board: Board) => editPlayerState(player => syncEditedBoardWithFalling(player, board))\n  const setEditedPair = (pair: PairEdit) => editPlayerState(player => setPairColors(player, pair.axis, pair.child))\n",
@@ -101,6 +96,13 @@ jobs:
               ),
           ])
 
-          # Remove this workflow from the resulting tree so only the actual source changes remain.
-          wf = Path('.github/workflows/apply-room-action-sync.yml')
-          wf.unlink()
+          Path('.github/workflows/apply-room-action-sync.yml').unlink()
+
+      - name: Commit patched sources
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/App.tsx src/components/RoomPanel.tsx src/game/room-client.ts server/room-server.mjs .github/workflows/apply-room-action-sync.yml
+          git diff --cached --quiet && exit 0
+          git commit -m "Implement room action synchronization"
+          git push origin HEAD:main
