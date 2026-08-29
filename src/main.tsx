@@ -18,6 +18,15 @@ import './header-library-hide.css'
 
 function KeyboardReady() {
   useEffect(() => {
+    // The trainer is keyboard-first. Focus the app root before releasing the
+    // startup keyboard buffer so the first gameplay key is not lost because
+    // focus is still on the browser chrome or a previous page element.
+    const root = document.getElementById('root')
+    if (root) {
+      root.setAttribute('tabindex', '-1')
+      root.focus({ preventScroll: true })
+    }
+    window.focus()
     window.dispatchEvent(new Event('puyo-trainer-keyboard-ready'))
   }, [])
   return null
