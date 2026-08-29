@@ -3,7 +3,7 @@ import { GAMEPLAY_ACTION_LABELS, formatKeyCode, resetKeybinds, setKeybind, type 
 import { PALETTE_COLOR_NAMES, PALETTE_OPTIONS, loadActivePalette, saveActivePalette, type ActivePalette, type PaletteColor } from '../game/palette'
 import './KeybindModal.css'
 
-const ACTIONS: GameplayAction[] = ['left', 'right', 'rotate-left', 'rotate-right', 'soft-drop', 'hard-drop', 'reset-turn', 'undo', 'redo']
+const ACTIONS: GameplayAction[] = ['left', 'right', 'rotate-left', 'rotate-right', 'soft-drop', 'hard-drop', 'reset-turn', 'undo', 'redo', 'toggle-player-pause']
 
 type ListeningTarget = { action: GameplayAction; slot: 0 | 1 } | null
 
