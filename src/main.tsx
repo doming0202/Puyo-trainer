@@ -1,8 +1,10 @@
+import './keyboard-startup-buffer'
 import './keyboard-guide'
 import './title-reset.css'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App'
+import { KeyboardReady } from './components/KeyboardReady'
 import { FallSpeedControl } from './components/FallSpeedControl'
 import { SnapshotBookmark } from './components/SnapshotBookmark'
 import { PuyoSequenceDebugPanel } from './components/PuyoSequenceDebugPanel'
@@ -17,6 +19,7 @@ import './header-library-hide.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
+    <KeyboardReady />
     <App />
     <FallSpeedControl />
     <SnapshotBookmark />
