@@ -7,7 +7,7 @@ export const DEFAULT_KEYBINDS: Keybinds = {
   left: ['KeyA', 'ArrowLeft'],
   right: ['KeyD', 'ArrowRight'],
   'rotate-left': ['KeyQ', 'KeyJ'],
-  'rotate-right': ['KeyW', 'KeyK'],
+  'rotate-right': ['KeyE', 'KeyK'],
   'soft-drop': ['KeyS', 'ArrowDown'],
   'hard-drop': ['Space', 'ArrowUp'],
   'reset-turn': ['KeyR', ''],
@@ -43,6 +43,17 @@ export function loadKeybinds(): Keybinds {
       result.undo = [...DEFAULT_KEYBINDS.undo] as KeybindSlots
       result.redo = [...DEFAULT_KEYBINDS.redo] as KeybindSlots
     }
+
+    // The previous default accidentally used W for right rotation. Only
+    // migrate the exact old default so intentionally customized bindings stay intact.
+    const hadLegacyDefaultRightRotation = Array.isArray(parsed['rotate-right'])
+      && parsed['rotate-right']?.[0] === 'KeyW'
+      && parsed['rotate-right']?.[1] === 'KeyK'
+    if (hadLegacyDefaultRightRotation) {
+      result['rotate-right'] = [...DEFAULT_KEYBINDS['rotate-right']] as KeybindSlots
+      saveKeybinds(result)
+    }
+
     return result
   } catch {
     return structuredKeybinds(DEFAULT_KEYBINDS)
