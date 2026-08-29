@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { createPuyoSequence, getFirstTwoPairColorCount, getSequenceColorCounts, SEQUENCE_PAIRS, type PuyoSequenceDebugState } from '../game/puyo-sequence'
+import { analyzePuyoSequence, createPuyoSequence, getFirstTwoPairColorCount, getSequenceColorCounts, SEQUENCE_PAIRS, type PuyoSequenceDebugState } from '../game/puyo-sequence'
 import type { Pair, PuyoColor } from '../game/types'
 import './puyo-sequence-debug.css'
 
@@ -36,6 +36,7 @@ export function PuyoSequenceDebugPanel() {
 
   const counts = useMemo(() => getSequenceColorCounts(state.sequence), [state.sequence])
   const firstTwoColors = useMemo(() => getFirstTwoPairColorCount(state.sequence), [state.sequence])
+  const analysis = useMemo(() => analyzePuyoSequence(state.sequence), [state.sequence])
 
   const regenerate = (seed: number) => {
     const next = createPuyoSequence(seed)
@@ -65,6 +66,19 @@ export function PuyoSequenceDebugPanel() {
 
     <div className="debug-counts">
       {COLORS.map((color) => <span key={color}>{COLOR_MARKS[color]} {COLOR_NAMES[color]} <b>{counts[color]}</b></span>)}
+    </div>
+
+    <div className="debug-analysis">
+      <div className="debug-analysis-title">短期偏りチェック</div>
+      <div className="debug-analysis-grid">
+        <span>同色ツモ</span><b>{analysis.pairSameColorCount}/128</b>
+        <span>隣接同色</span><b>{analysis.adjacentSameColorCount}/255</b>
+        <span>8個窓 最大差</span><b>{analysis.windowSpread[8]}</b>
+        <span>16個窓 最大差</span><b>{analysis.windowSpread[16]}</b>
+        <span>32個窓 最大差</span><b>{analysis.windowSpread[32]}</b>
+        <span>64個窓 最大差</span><b>{analysis.windowSpread[64]}</b>
+      </div>
+      <small>窓内の色数の最大−最小。値が大きいほど局所的な偏りが強い。</small>
     </div>
 
     <div className="debug-sequence-grid">
