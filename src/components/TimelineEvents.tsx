@@ -2,7 +2,7 @@ import type { ReplayFrame } from '../game/replay'
 import { isGarbageCell } from '../game/types'
 import './TimelineEvents.css'
 
-type EventKind = 'attack' | 'drop'
+type EventKind = 'chain' | 'attack' | 'drop'
 
 export interface TimelineEvent {
   time: number
@@ -23,6 +23,7 @@ export function buildTimelineEvents(frames: ReplayFrame[]): TimelineEvent[] {
   if (frames.length < 2) return []
 
   const events: TimelineEvent[] = []
+  const chainCounts: [number, number] = [0, 0]
 
   for (let index = 1; index < frames.length; index += 1) {
     const previous = frames[index - 1]
@@ -34,6 +35,18 @@ export function buildTimelineEvents(frames: ReplayFrame[]): TimelineEvent[] {
       const currentPlayer = current.players[playerIndex]
       const playerName = playerIndex === 0 ? 'A' : 'B'
       const opponentName = playerIndex === 0 ? 'B' : 'A'
+
+      // 連鎖: 新しい連鎖が開始した瞬間に1回だけ記録し、表示は累計連鎖数のみ。
+      if (currentPlayer.chain > 0 && previousPlayer.chain <= 0) {
+        chainCounts[playerIndex] += 1
+        events.push({
+          time,
+          label: `${playerName} 連鎖累計 ${chainCounts[playerIndex]}`,
+          kind: 'chain',
+          player: playerIndex,
+          key: `${index}-chain-${playerIndex}`,
+        })
+      }
 
       // 攻撃: 相手側の受信おじゃまが増えた瞬間を、攻撃した側のイベントとして表示する。
       const incomingDelta = currentPlayer.incomingGarbage - previousPlayer.incomingGarbage
