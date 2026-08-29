@@ -66,6 +66,12 @@ export interface TurnState {
   hidden: HiddenBoard
   current: ActivePair
   next: Pair[]
+  /** Complete deterministic 128-pair cycle used to supply current/next. */
+  puyoSequence: Pair[]
+  /** Zero-based index of the next pair to consume from puyoSequence. */
+  puyoSequenceIndex: number
+  /** Seed identifying the current 128-pair cycle. */
+  puyoSequenceSeed: number
   /** Incoming garbage waiting above the opponent board. */
   incomingGarbage: number
   /** Legacy serialized alias kept for compatibility with older snapshots. */
