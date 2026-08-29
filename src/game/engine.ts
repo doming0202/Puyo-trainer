@@ -103,7 +103,7 @@ export function stepDown(player: PlayerState): PlayerState {
   return { ...player, current: candidate, fallElapsedMs: 0, lockElapsedMs: 0, quickTurnArmed: false }
 }
 export function advancePlayer(player: PlayerState, deltaMs: number): PlayerState {
-  if (!player.alive || player.resolution) return player
+  if (!player.alive || player.resolution || player.controlMode === 'fixed') return player
   const delta = Math.max(0, deltaMs)
   const candidate = { ...player.current, y: player.current.y + 1 }
   if (!canPlace(player, candidate)) {
@@ -117,7 +117,7 @@ export function advancePlayer(player: PlayerState, deltaMs: number): PlayerState
   return { ...player, current: candidate, fallElapsedMs: fallElapsedMs - fallIntervalMs, lockElapsedMs: 0, quickTurnArmed: false }
 }
 export function hardDrop(player: PlayerState): PlayerState {
-  if (!player.alive || player.resolution) return player
+  if (!player.alive || player.resolution || player.controlMode === 'fixed') return player
   let current = player.current
   while (canPlace(player, { ...current, y: current.y + 1 })) current = { ...current, y: current.y + 1 }
   return beginPlacement({ ...player, current })
@@ -195,7 +195,7 @@ function applyIncomingGarbage(player: PlayerState): PlayerState {
 export interface ResolutionAdvanceResult { player: PlayerState; attack: number }
 export function advanceResolution(player: PlayerState): ResolutionAdvanceResult {
   const resolution = player.resolution
-  if (!resolution || !player.alive) return { player, attack: 0 }
+  if (!resolution || !player.alive || player.controlMode === 'fixed') return { player, attack: 0 }
   if (resolution.stage === 'gravity') {
     const { board, hidden, fallingCells } = applyGravityWithOrigins(player.board, player.hidden)
     return { player: { ...player, board, hidden, resolution: { stage: 'fall', pendingGroups: [], fallingCells } }, attack: 0 }
@@ -265,8 +265,13 @@ function findGroups(board: Board): Array<Array<{ x: number; y: number }>> {
   }
   return groups
 }
-export type GameplayAction = 'left' | 'right' | 'rotate-left' | 'rotate-right' | 'soft-drop' | 'hard-drop' | 'reset-turn' | 'undo' | 'redo'
+export type GameplayAction = 'left' | 'right' | 'rotate-left' | 'rotate-right' | 'soft-drop' | 'hard-drop' | 'reset-turn' | 'undo' | 'redo' | 'toggle-player-pause'
 export function updatePlayer(player: PlayerState, action: GameplayAction): PlayerState {
+  if (action === 'toggle-player-pause') {
+    if (player.controlMode === 'human') return { ...player, controlMode: 'fixed' }
+    if (player.controlMode === 'fixed') return { ...player, controlMode: 'human' }
+    return player
+  }
   if (action === 'reset-turn') return resetToTurnStart(player)
   if (action === 'undo') return undoTurnAction(player)
   if (action === 'redo') return redoTurnAction(player)
