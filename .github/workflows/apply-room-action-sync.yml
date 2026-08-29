@@ -1,0 +1,106 @@
+name: apply-room-action-sync
+
+on:
+  push:
+    paths:
+      - .github/workflows/apply-room-action-sync.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply room action sync patch
+        shell: python
+        run: |
+          from pathlib import Path
+
+          def patch(path, replacements):
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              original = text
+              for old, new in replacements:
+                  if old not in text:
+                      raise SystemExit(f'anchor not found in {path}: {old[:120]!r}')
+                  text = text.replace(old, new, 1)
+              if text == original:
+                  raise SystemExit(f'no changes made to {path}')
+              p.write_text(text, encoding='utf-8')
+
+          patch('src/game/room-client.ts', [
+              (
+                  "import type { ReplayState } from './replay'\n",
+                  "import type { ReplayState } from './replay'\nimport type { GameplayAction } from './keybinds'\n",
+              ),
+              (
+                  "export type RoomFocusState = [string | null, string | null]\n",
+                  "export type RoomFocusState = [string | null, string | null]\nexport type RoomAction = GameplayAction | 'global-pause'\n",
+              ),
+              (
+                  "  | { type: 'focus-denied'; playerIndex: 0 | 1 | null; reason: string; ownerRole?: RoomRole | null }\n",
+                  "  | { type: 'focus-denied'; playerIndex: 0 | 1 | null; reason: string; ownerRole?: RoomRole | null }\n  | { type: 'student-action'; playerIndex: 0 | 1; action: RoomAction }\n",
+              ),
+              (
+                  "  sendState(state: SharedRoomState): void {\n",
+                  "  sendAction(playerIndex: 0 | 1, action: RoomAction): void {\n    if (this._role !== 'student') return\n    this.send({ type: 'student-action', playerIndex, action })\n  }\n\n  sendState(state: SharedRoomState): void {\n",
+              ),
+              (
+                  "  sendLiveState(state: SharedRoomLiveState): void {\n",
+                  "  sendLiveState(state: SharedRoomLiveState): void {\n",
+              ),
+          ])
+
+          patch('server/room-server.mjs', [
+              (
+                  "  if (message.type === 'live-state' && member.role === 'coach') {\n",
+                  "  if (message.type === 'student-action') {\n    if (member.role !== 'student') {\n      return send(socket, { type: 'error', code: 'student-action-forbidden', message: '生徒操作を送信できるのは生徒だけです' })\n    }\n    const playerIndex = Number(message.playerIndex)\n    const action = typeof message.action === 'string' ? message.action : ''\n    const allowedActions = new Set([\n      'left', 'right', 'rotate-left', 'rotate-right', 'soft-drop', 'hard-drop',\n      'reset-turn', 'undo', 'redo', 'toggle-player-pause', 'global-pause',\n    ])\n    if (!Number.isInteger(playerIndex) || playerIndex < 0 || playerIndex > 1 || !allowedActions.has(action)) {\n      return send(socket, { type: 'error', code: 'invalid-student-action', message: '無効な生徒操作です' })\n    }\n    if (room.focus[playerIndex] !== member.id) {\n      return send(socket, { type: 'error', code: 'focus-not-owned', message: 'このPlayerの操作権を持っていません' })\n    }\n    broadcast(room, { type: 'student-action', playerIndex, action }, socket)\n    return\n  }\n\n  if (message.type === 'live-state' && member.role === 'coach') {\n",
+              ),
+          ])
+
+          patch('src/components/RoomPanel.tsx', [
+              (
+                  "import type { SharedRoomLiveState, SharedRoomState, RoomRole, RoomFocusState } from '../game/room-client'\n",
+                  "import type { RoomAction, SharedRoomLiveState, SharedRoomState, RoomRole, RoomFocusState } from '../game/room-client'\n",
+              ),
+              (
+                  "      } else if (message.type === 'focus-denied') {\n",
+                  "      } else if (message.type === 'student-action') {\n        window.dispatchEvent(new CustomEvent('puyo-room-student-action', { detail: { playerIndex: message.playerIndex, action: message.action } }))\n      } else if (message.type === 'focus-denied') {\n",
+              ),
+              (
+                  "    window.addEventListener('puyo-room-request-focus', onFocusRequest)\n    window.addEventListener('puyo-room-release-focus', onFocusRelease)\n",
+                  "    const onLocalAction = (event: Event) => {\n      const detail = (event as CustomEvent<{ playerIndex: 0 | 1; action: RoomAction }>).detail\n      if (!detail || (detail.playerIndex !== 0 && detail.playerIndex !== 1) || typeof detail.action !== 'string') return\n      if (client.role === 'student') {\n        if (client.focus[detail.playerIndex] === client.memberId) client.sendAction(detail.playerIndex, detail.action)\n      } else if (client.role === 'coach') {\n        const currentGame = gameRef.current\n        const currentReplay = replayRef.current\n        const currentElapsed = timelineRef.current\n        client.sendState({ game: compactGame(currentGame), replay: compactReplay(currentReplay), elapsedMs: currentElapsed })\n        lastSnapshotSyncRef.current = Date.now()\n      }\n    }\n    const onRoomStateChanged = () => {\n      if (client.role !== 'coach') return\n      const currentGame = gameRef.current\n      const currentReplay = replayRef.current\n      const currentElapsed = timelineRef.current\n      client.sendState({ game: compactGame(currentGame), replay: compactReplay(currentReplay), elapsedMs: currentElapsed })\n      lastSnapshotSyncRef.current = Date.now()\n    }\n    window.addEventListener('puyo-room-request-focus', onFocusRequest)\n    window.addEventListener('puyo-room-release-focus', onFocusRelease)\n    window.addEventListener('puyo-room-local-action', onLocalAction)\n    window.addEventListener('puyo-room-state-changed', onRoomStateChanged)\n",
+              ),
+              (
+                  "      window.removeEventListener('puyo-room-request-focus', onFocusRequest)\n      window.removeEventListener('puyo-room-release-focus', onFocusRelease)\n",
+                  "      window.removeEventListener('puyo-room-request-focus', onFocusRequest)\n      window.removeEventListener('puyo-room-release-focus', onFocusRelease)\n      window.removeEventListener('puyo-room-local-action', onLocalAction)\n      window.removeEventListener('puyo-room-state-changed', onRoomStateChanged)\n",
+              ),
+          ])
+
+          patch('src/App.tsx', [
+              (
+                  "    setReplay(state => appendFrame(state, nextGame, elapsedMs))\n  }, [editMode, focusedPlayer, pendingRoomFocus, roomConnected, roomFocusState, roomMemberId, syncElapsed])\n\n  const actionForKey",
+                  "    setReplay(state => appendFrame(state, nextGame, elapsedMs))\n    window.dispatchEvent(new CustomEvent('puyo-room-local-action', { detail: { playerIndex, action } }))\n  }, [editMode, focusedPlayer, pendingRoomFocus, roomConnected, roomFocusState, roomMemberId, syncElapsed])\n\n  useEffect(() => {\n    const onStudentAction = (event: Event) => {\n      const detail = (event as CustomEvent<{ playerIndex: 0 | 1; action: GameplayAction | 'global-pause' }>).detail\n      if (!detail || (detail.playerIndex !== 0 && detail.playerIndex !== 1) || !roomConnected || !roomMemberId) return\n      const current = gameRef.current\n\n      if (detail.action === 'global-pause') {\n        const currentReplay = replayRef.current\n        if (currentReplay.playing) {\n          const frame = currentReplay.frames[currentReplay.cursor]\n          const elapsedMs = frame?.elapsedMs ?? 0\n          setReplay(state => ({ ...state, playing: false }))\n          resetClock(elapsedMs)\n          const nextGame = { ...frameToGame(frame ?? currentReplay.frames[0], false), running: true }\n          gameRef.current = nextGame\n          setGame(nextGame)\n        } else {\n          const elapsedMs = syncElapsed(current.running)\n          const nextGame = { ...current, running: !current.running }\n          gameRef.current = nextGame\n          setGame(nextGame)\n          setReplay(state => appendFrame(state, nextGame, elapsedMs))\n        }\n        window.dispatchEvent(new Event('puyo-room-state-changed'))\n        return\n      }\n\n      const player = current.players[detail.playerIndex]\n      const historyAction = detail.action === 'reset-turn' || detail.action === 'undo' || detail.action === 'redo'\n      const playerPauseAction = detail.action === 'toggle-player-pause'\n      if (!historyAction && !playerPauseAction && (player.controlMode !== 'human' || !player.alive || !current.running)) return\n      if ((historyAction || playerPauseAction) && player.controlMode === 'replay') return\n      const elapsedMs = syncElapsed(current.running)\n      const nextPlayer = updatePlayer(player, detail.action)\n      if (nextPlayer === player) return\n      const players = [...current.players] as [PlayerState, PlayerState]\n      players[detail.playerIndex] = nextPlayer\n      const nextGame = { ...current, players, activePlayer: detail.playerIndex, tick: current.tick + 1 }\n      gameRef.current = nextGame\n      setGame(nextGame)\n      setReplay(state => appendFrame(state, nextGame, elapsedMs))\n      window.dispatchEvent(new Event('puyo-room-state-changed'))\n    }\n    window.addEventListener('puyo-room-student-action', onStudentAction)\n    return () => window.removeEventListener('puyo-room-student-action', onStudentAction)\n  }, [resetClock, roomConnected, roomMemberId, syncElapsed])\n\n  const actionForKey",
+              ),
+              (
+                  "          setLiveElapsedMs(elapsedMs)\n        }\n        return\n",
+                  "          setLiveElapsedMs(elapsedMs)\n          window.dispatchEvent(new CustomEvent('puyo-room-local-action', { detail: { playerIndex: focusedPlayer, action: 'global-pause' } }))\n        }\n        return\n",
+              ),
+          ])
+
+          # A state change caused by local board/pair editing should also be published immediately.
+          patch('src/App.tsx', [
+              (
+                  "  const setEditedBoard = (board: Board) => editPlayerState(player => syncEditedBoardWithFalling(player, board))\n  const setEditedPair = (pair: PairEdit) => editPlayerState(player => setPairColors(player, pair.axis, pair.child))\n",
+                  "  const setEditedBoard = (board: Board) => { editPlayerState(player => syncEditedBoardWithFalling(player, board)); window.dispatchEvent(new Event('puyo-room-state-changed')) }\n  const setEditedPair = (pair: PairEdit) => { editPlayerState(player => setPairColors(player, pair.axis, pair.child)); window.dispatchEvent(new Event('puyo-room-state-changed')) }\n",
+              ),
+          ])
+
+          # Remove this workflow from the resulting tree so only the actual source changes remain.
+          wf = Path('.github/workflows/apply-room-action-sync.yml')
+          wf.unlink()
