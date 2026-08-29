@@ -273,7 +273,7 @@ export function advanceResolution(player: PlayerState): ResolutionAdvanceResult 
   const colorBonus = Math.max(0, resolution.pendingGroups.length - 1) * 3
   const score = player.score + cleared * 10 * Math.max(1, player.chain + colorBonus)
   const attack = calculateGarbageAttack(cleared, player.chain, resolution.pendingGroups.length)
-  return { player: { ...player, board, score, resolution: { stage: 'gravity', pendingGroups: [] } }, attack }
+  return { player: { ...player, board, resolution: { stage: 'gravity', pendingGroups: [] } }, attack }
 }
 
 function finishPlacement(player: PlayerState): PlayerState {
