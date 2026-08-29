@@ -239,7 +239,7 @@ export function RoomPanel({
         playing: currentReplay.playing,
         speed: currentReplay.speed,
       })
-      for (const playerIndex of [0, 1]) {
+      for (const playerIndex of [0, 1] as const)
         client.sendPlayerState({
           playerIndex,
           player: compactPlayerState(gameRef.current.players[playerIndex]),
