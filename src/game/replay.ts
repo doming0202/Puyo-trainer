@@ -12,9 +12,7 @@ export interface ReplayState {
   cursor: number
   playing: boolean
   speed: number
-  /** Original timeline kept intact after the first divergent edit. */
   originalFrames?: ReplayFrame[]
-  /** Elapsed time where the active branch first diverged from Original. */
   branchOriginElapsedMs?: number
 }
 
@@ -110,17 +108,17 @@ export function createReplay(game: GameState): ReplayState {
 export function appendFrame(replay: ReplayState, game: GameState, elapsedMs?: number): ReplayState {
   const currentFrame = replay.frames[replay.cursor]
   const diverging = replay.cursor < replay.frames.length - 1
-
-  // A branch always inherits the exact timestamp at the fork.  From that point
-  // onward the live clock supplied by App is allowed to advance normally.  Do
-  // not reuse a timestamp from the discarded future, otherwise the new branch
-  // can appear frozen at the seek position.
   const baseElapsed = diverging
     ? (currentFrame?.elapsedMs ?? 0)
     : (replay.frames[replay.frames.length - 1]?.elapsedMs ?? 0)
   const requestedElapsed = elapsedMs ?? baseElapsed
+
+  // A manual operation immediately after seeking must create a genuinely new
+  // point on the live timeline.  Give the first branch frame a small monotonic
+  // advance even when the input arrives in the same millisecond as the seek;
+  // subsequent frames use the normal live clock supplied by App.
   const nextElapsed = diverging
-    ? Math.max(baseElapsed, requestedElapsed)
+    ? Math.max(baseElapsed + 50, requestedElapsed)
     : Math.max(baseElapsed, requestedElapsed)
   const frame = captureFrame(game, nextElapsed)
 
