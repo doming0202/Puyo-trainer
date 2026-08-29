@@ -14,6 +14,7 @@ export function snapshotTurnState(player: PlayerState): TurnState {
     score: player.score,
     chain: player.chain,
     controlMode: player.controlMode,
+    paused: player.paused,
     alive: player.alive,
     resolution: player.resolution ? structuredClone(player.resolution) : undefined,
     fallElapsedMs: player.fallElapsedMs,
@@ -101,12 +102,14 @@ export function redoTurnAction(player: PlayerState): PlayerState {
 
 /**
  * R resets only the current falling puyo to the moment it appeared.
- * It does not erase the history of older turns.
+ * Pause is a gameplay-session state, not part of the turn reset, so it is
+ * intentionally preserved while the falling puyo is restored.
  */
 export function resetToTurnStart(player: PlayerState): PlayerState {
   return {
     ...player.turnStart,
     controlMode: player.controlMode,
+    paused: player.paused,
     turnStart: player.turnStart,
     undoStack: player.undoStack,
     redoStack: [],
