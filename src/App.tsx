@@ -30,6 +30,13 @@ type TimelineSeekDetail = {
 const COLOR_MAP: Record<PuyoColor, string> = { 1: '#ff5b68', 2: '#5aa7ff', 3: '#58d68d', 4: '#b66cff' }
 const COLOR_NAMES: Record<PuyoColor, string> = { 1: '赤', 2: '青', 3: '緑', 4: '紫' }
 
+function garbageTierClass(color: PuyoColor): string {
+  const value = color as number
+  if (value < 5) return ''
+  const tier = Math.min(5, Math.max(1, value - 4))
+  return `garbage-puyo garbage-tier-${tier}`
+}
+
 function seekTime(elapsedMs: number): void {
   window.dispatchEvent(new CustomEvent<TimelineSeekDetail>('puyo-timeline-seek', { detail: { mode: 'time', value: elapsedMs } }))
 }
@@ -64,7 +71,7 @@ function BoardView({ player, editMode, focused, onFocus, onBoardChange, onPairEd
       ...(fallingCell ? { '--fall-offset': `${(fallingCell.fromY - y) * 40}px` } : {}),
     } as CSSProperties & Record<'--fall-offset', string>) : undefined
     return <div className={`cell ${clearing.has(key) ? 'clearing-cell' : ''}`} key={key}>
-      {color && <span className={`puyo ${fallingCell ? 'falling-puyo' : ''}`} style={puyoStyle} />}
+      {color && <span className={`puyo ${garbageTierClass(color)} ${fallingCell ? 'falling-puyo' : ''}`} style={puyoStyle} />}
     </div>
   })}</div>{editMode && <DirectBoardEditor board={player.board} onBoardChange={onBoardChange} onPairEdit={onPairEdit} />}</div><div className="score">SCORE <b>{player.score.toLocaleString()}</b></div></div>
 }
