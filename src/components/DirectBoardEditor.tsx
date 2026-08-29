@@ -147,14 +147,14 @@ export function DirectBoardEditor({ board, onBoardChange, onPairEdit: _onPairEdi
       ))}
       <button
         type="button"
-        className={`direct-editor-palette-button garbage ${paintColor === GARBAGE_CELL ? 'selected' : ''}`}
-        title="おじゃまを選択範囲へ適用"
+        className={`direct-editor-palette-button palette-obstruction ${paintColor === GARBAGE_CELL ? 'selected' : ''}`}
+        title="妨害を選択範囲へ適用"
         aria-pressed={paintColor === GARBAGE_CELL}
         onMouseDown={(event) => event.stopPropagation()}
         onClick={() => applyPaint(GARBAGE_CELL)}
       >
-        <span className="direct-editor-palette-dot garbage" />
-        <span>おじゃま</span>
+        <span className="direct-editor-palette-dot obstruction" />
+        <span>妨害</span>
       </button>
     </div>
   </>
