@@ -115,6 +115,50 @@
   box-shadow: 0 4px 12px rgba(0,0,0,.3);
 }
 
+.incoming-garbage-panel {
+  position: absolute;
+  z-index: 4;
+  left: 50%;
+  top: -42px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: max-content;
+  padding: 4px 7px;
+  border: 1px solid #394354;
+  border-radius: 8px;
+  background: rgba(13,17,24,.94);
+  box-shadow: 0 8px 18px rgba(0,0,0,.24);
+  white-space: nowrap;
+}
+
+.incoming-garbage-label {
+  color: #8c98a9;
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: .1em;
+}
+
+.incoming-garbage-icons {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.incoming-garbage-panel .garbage-attack-icon {
+  width: 24px;
+  height: 24px;
+  flex-basis: 24px;
+  box-shadow: inset 0 1px 3px rgba(255,255,255,.35), inset 0 -1px 3px rgba(0,0,0,.22), 0 2px 5px rgba(0,0,0,.3);
+}
+
+.incoming-garbage-panel strong {
+  color: #e7edf5;
+  font-size: 12px;
+  line-height: 1;
+}
+
 @keyframes garbage-attack-pop {
   0% { opacity: 0; transform: translate(-50%, -80%) scale(.55); }
   18% { opacity: 1; transform: translate(-50%, -100%) scale(1.08); }
