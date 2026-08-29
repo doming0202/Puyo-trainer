@@ -1,6 +1,7 @@
 import { snapshotTurnState } from './history'
 import { emptyHiddenBoard } from './engine'
 import type { GameState, PlayerState, TurnState } from './types'
+import { gameForPersistence } from './state-boundary'
 
 export interface Snapshot {
   id: string
@@ -66,6 +67,7 @@ function normalizeTurnState(state: TurnState, fallback: PlayerState): TurnState 
   const incomingGarbage = state.incomingGarbage ?? state.garbage ?? fallback.incomingGarbage ?? fallback.garbage ?? 0
   return {
     ...state,
+    paused: false,
     board: state.board?.map((row) => [...row]) ?? fallback.board.map((row) => [...row]),
     hidden: normalizeHidden(state.hidden),
     current: state.current ? { ...state.current, pair: { ...state.current.pair } } : { ...fallback.current, pair: { ...fallback.current.pair } },
@@ -87,6 +89,7 @@ function normalizePlayer(player: PlayerState): PlayerState {
   const incomingGarbage = player.incomingGarbage ?? player.garbage ?? 0
   const base = {
     ...player,
+    paused: false,
     incomingGarbage,
     garbage: player.garbage ?? incomingGarbage,
     board: player.board.map((row) => [...row]),
@@ -125,12 +128,13 @@ export function cloneGameState(game: GameState): GameState {
 }
 
 export function makeSnapshot(game: GameState, title: string, tags: string[] = []): Snapshot {
+  const state = gameForPersistence(game)
   return {
     id: crypto.randomUUID(),
     title: title.trim() || `局面 ${new Date().toLocaleString('ja-JP')}`,
     tags: tags.filter(Boolean),
     createdAt: Date.now(),
     sourceTick: game.tick,
-    state: cloneGameState(game),
+    state: cloneGameState(state),
   }
 }
