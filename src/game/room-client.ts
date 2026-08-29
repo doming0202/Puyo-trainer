@@ -25,9 +25,11 @@ type RoomMessage =
   | { type: 'state'; state: SharedRoomState | null }
   | { type: 'live-state'; state: SharedRoomLiveState }
   | { type: 'presence'; studentCount: number }
+  | { type: 'disconnected' }
   | { type: 'error'; code?: string; message: string }
 
 const HOST_TOKEN_PREFIX = 'puyo-trainer-room-host:'
+const ROOM_SESSION_KEY = 'puyo-trainer-room-session'
 
 function wsUrl(): string {
   const configured = import.meta.env.VITE_ROOM_WS_URL
@@ -54,8 +56,32 @@ function loadHostToken(roomId: string): string {
   try { return localStorage.getItem(`${HOST_TOKEN_PREFIX}${roomId}`) || '' } catch { return '' }
 }
 
+function storeRoomSession(roomId: string, joinToken: string): void {
+  if (!roomId || !joinToken) return
+  try { localStorage.setItem(ROOM_SESSION_KEY, JSON.stringify({ roomId, joinToken })) } catch { /* session still works */ }
+}
+
+function loadRoomSession(): { roomId: string; joinToken: string } | null {
+  try {
+    const raw = localStorage.getItem(ROOM_SESSION_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Partial<{ roomId: string; joinToken: string }>
+    return typeof parsed.roomId === 'string' && typeof parsed.joinToken === 'string' && parsed.roomId && parsed.joinToken
+      ? { roomId: parsed.roomId, joinToken: parsed.joinToken }
+      : null
+  } catch { return null }
+}
+
+function clearRoomSession(): void {
+  try { localStorage.removeItem(ROOM_SESSION_KEY) } catch { /* best effort */ }
+}
+
 export function getRoomInviteFromUrl(): { roomId: string; joinToken: string } | null {
   return parseInvite()
+}
+
+export function getStoredRoomSession(): { roomId: string; joinToken: string } | null {
+  return loadRoomSession()
 }
 
 export class RoomClient {
@@ -101,6 +127,7 @@ export class RoomClient {
       socket.onclose = () => {
         this.socket = null
         this._role = null
+        this.emit({ type: 'disconnected' })
       }
     })
   }
@@ -111,14 +138,29 @@ export class RoomClient {
   }
 
   async createRoom(): Promise<void> {
+    clearRoomSession()
     await this.connect()
     this.send({ type: 'create-room' })
   }
 
   async join(roomId: string, joinToken: string): Promise<void> {
+    storeRoomSession(roomId, joinToken)
     await this.connect()
     const hostToken = loadHostToken(roomId)
     this.send({ type: 'join-room', roomId, joinToken, hostToken })
+  }
+
+  async rejoinStoredRoom(): Promise<boolean> {
+    const session = loadRoomSession()
+    if (!session) return false
+    await this.connect()
+    const hostToken = loadHostToken(session.roomId)
+    this.send({ type: 'join-room', roomId: session.roomId, joinToken: session.joinToken, hostToken })
+    return true
+  }
+
+  forgetStoredRoom(): void {
+    clearRoomSession()
   }
 
   sendState(state: SharedRoomState): void {
