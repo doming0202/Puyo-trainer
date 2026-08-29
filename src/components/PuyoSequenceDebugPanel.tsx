@@ -1,0 +1,75 @@
+import { useEffect, useMemo, useState } from 'react'
+import { createPuyoSequence, getFirstTwoPairColorCount, getSequenceColorCounts, SEQUENCE_PAIRS, type PuyoSequenceDebugState } from '../game/puyo-sequence'
+import type { Pair, PuyoColor } from '../game/types'
+import './puyo-sequence-debug.css'
+
+const COLORS: PuyoColor[] = [1, 2, 3, 4]
+const COLOR_NAMES: Record<PuyoColor, string> = { 1: '赤', 2: '青', 3: '緑', 4: '紫' }
+const COLOR_MARKS: Record<PuyoColor, string> = { 1: '🔴', 2: '🔵', 3: '🟢', 4: '🟣' }
+
+function randomSeed(): number {
+  return Math.floor(Math.random() * 0xffffffff) >>> 0
+}
+
+function PairView({ pair }: { pair: Pair }) {
+  return <span className="sequence-pair"><b>{COLOR_MARKS[pair.axis]}</b><b>{COLOR_MARKS[pair.child]}</b></span>
+}
+
+export function PuyoSequenceDebugPanel() {
+  const [open, setOpen] = useState(false)
+  const [seedInput, setSeedInput] = useState('')
+  const [state, setState] = useState<PuyoSequenceDebugState>(() => createPuyoSequence())
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.repeat || event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return
+      if (event.ctrlKey && event.shiftKey && event.code === 'KeyD') {
+        event.preventDefault()
+        setOpen((value) => !value)
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
+
+  const counts = useMemo(() => getSequenceColorCounts(state.sequence), [state.sequence])
+  const firstTwoColors = useMemo(() => getFirstTwoPairColorCount(state.sequence), [state.sequence])
+
+  const regenerate = (seed: number) => {
+    const next = createPuyoSequence(seed)
+    setState(next)
+    setSeedInput(String(next.seed))
+  }
+
+  if (!open) return null
+
+  return <aside className="puyo-sequence-debug" aria-label="配ぷよ検証モード">
+    <div className="puyo-sequence-debug-header">
+      <div><span className="debug-eyebrow">DEVELOPMENT</span><strong>配ぷよ検証モード</strong></div>
+      <button onClick={() => setOpen(false)} aria-label="閉じる">×</button>
+    </div>
+
+    <div className="debug-controls">
+      <label>Seed<input value={seedInput || String(state.seed)} onChange={(event) => setSeedInput(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') regenerate(Number(seedInput) || randomSeed()) }} /></label>
+      <button onClick={() => regenerate(randomSeed())}>再生成</button>
+      <button onClick={() => { void navigator.clipboard?.writeText(String(state.seed)) }}>Seedコピー</button>
+    </div>
+
+    <div className="debug-summary">
+      <div><span>周期</span><b>{SEQUENCE_PAIRS}手</b></div>
+      <div><span>初手2手</span><b className={firstTwoColors <= 3 ? 'debug-ok' : 'debug-ng'}>{firstTwoColors}色 {firstTwoColors <= 3 ? '✓' : '✕'}</b></div>
+      <div><span>現在位置</span><b>{state.index}/{SEQUENCE_PAIRS}</b></div>
+    </div>
+
+    <div className="debug-counts">
+      {COLORS.map((color) => <span key={color}>{COLOR_MARKS[color]} {COLOR_NAMES[color]} <b>{counts[color]}</b></span>)}
+    </div>
+
+    <div className="debug-sequence-grid">
+      {state.sequence.map((pair, index) => <div className={`sequence-row ${index < 2 ? 'sequence-first' : ''}`} key={index}>
+        <span>{String(index + 1).padStart(3, '0')}</span><PairView pair={pair} />
+      </div>)}
+    </div>
+    <div className="debug-hint">Ctrl + Shift + D で表示 / 非表示</div>
+  </aside>
+}
