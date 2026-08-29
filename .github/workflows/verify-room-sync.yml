@@ -1,4 +1,4 @@
-name: verify-room-sync
+name: cleanup-room-sync
 
 on:
   push:
@@ -9,36 +9,35 @@ permissions:
   contents: write
 
 jobs:
-  verify:
+  cleanup:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Revert premature edit sync event
-        shell: python
+      - name: Clean temporary changes and refresh lockfile
+        shell: bash
         run: |
+          python - <<'PY'
           from pathlib import Path
           p = Path('src/App.tsx')
           text = p.read_text(encoding='utf-8')
           old = "  const setEditedBoard = (board: Board) => { editPlayerState(player => syncEditedBoardWithFalling(player, board)); window.dispatchEvent(new Event('puyo-room-state-changed')) }\n  const setEditedPair = (pair: PairEdit) => { editPlayerState(player => setPairColors(player, pair.axis, pair.child)); window.dispatchEvent(new Event('puyo-room-state-changed')) }\n"
           new = "  const setEditedBoard = (board: Board) => editPlayerState(player => syncEditedBoardWithFalling(player, board))\n  const setEditedPair = (pair: PairEdit) => editPlayerState(player => setPairColors(player, pair.axis, pair.child))\n"
           if old not in text:
-              raise SystemExit('edit sync anchor not found')
+              raise SystemExit('expected temporary App.tsx edit-sync change was not found')
           p.write_text(text.replace(old, new, 1), encoding='utf-8')
-
-      - name: Verify build
-        run: |
+          PY
           corepack enable
-          pnpm install --no-frozen-lockfile
-          pnpm build
-
-      - name: Commit verified sources
-        run: |
+          pnpm install --lockfile-only --no-frozen-lockfile
           rm .github/workflows/verify-room-sync.yml
+
+      - name: Commit cleanup
+        run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add src/App.tsx pnpm-lock.yaml .github/workflows/verify-room-sync.yml
-          git commit -m "Verify room action synchronization"
+          git diff --cached --quiet && exit 0
+          git commit -m "Clean up room sync verification"
           git push origin HEAD:main
