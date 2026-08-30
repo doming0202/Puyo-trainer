@@ -1,14 +1,21 @@
-import type { GameState, TurnState } from './types'
+import type { GameState, PlayerState, TurnHistoryEntry, TurnState } from './types'
 import type { ReplayState } from './replay'
-import type { GameplayAction } from './keybinds'
 
 export type RoomRole = 'coach' | 'student'
 export type RoomFocusState = [string | null, string | null]
-export type RoomAction = GameplayAction | 'global-pause'
+export type RoomAction = 'global-pause'
 export interface SharedRoomState { game: GameState; replay: ReplayState; elapsedMs: number }
 export interface SharedRoomLiveState { elapsedMs: number; cursorElapsedMs: number; playing: boolean; speed: number }
 export type RoomPlayerState = Omit<TurnState, 'puyoSequence'>
 export interface RoomPlayerStateSync { playerIndex: 0 | 1; player: RoomPlayerState; tick: number; activePlayer: 0 | 1; running: boolean; elapsedMs: number }
+export interface RoomPlayerHistoryStateSync {
+  playerIndex: 0 | 1
+  player: PlayerState
+  tick: number
+  activePlayer: 0 | 1
+  running: boolean
+  elapsedMs: number
+}
 export interface RoomTimeStateSync {
   playerIndex: 0 | 1
   tick: number
@@ -24,13 +31,13 @@ type RoomMessage =
   | { type: 'state'; state: SharedRoomState | null }
   | { type: 'live-state'; state: SharedRoomLiveState }
   | { type: 'player-state'; state: RoomPlayerStateSync }
+  | { type: 'player-history-state'; state: RoomPlayerHistoryStateSync }
   | { type: 'time-state'; state: RoomTimeStateSync }
   | { type: 'reset-state'; state: SharedRoomState }
   | { type: 'presence'; studentCount: number }
   | { type: 'focus-state'; focus: RoomFocusState }
   | { type: 'focus-granted'; playerIndex: 0 | 1; focus: RoomFocusState }
   | { type: 'focus-denied'; playerIndex: 0 | 1 | null; reason: string; ownerRole?: RoomRole | null }
-  | { type: 'student-action'; playerIndex: 0 | 1; action: RoomAction; elapsedMs?: number }
   | { type: 'disconnected' }
   | { type: 'error'; code?: string; message: string }
 const HOST_TOKEN_PREFIX = 'puyo-trainer-room-host:'
@@ -59,6 +66,7 @@ export class RoomClient {
   get memberId(): string { return this._memberId }
   get studentCount(): number { return this._studentCount }
   get focus(): RoomFocusState { return [...this._focus] as RoomFocusState }
+  hasFocus(playerIndex: 0 | 1): boolean { return this._role !== null && this._focus[playerIndex] === this._memberId }
   subscribe(listener: Listener): () => void { this.listeners.add(listener); return () => this.listeners.delete(listener) }
   private emit(message: RoomMessage): void { for (const listener of this.listeners) listener(message) }
   private connect(): Promise<void> {
@@ -73,12 +81,12 @@ export class RoomClient {
   async requestFocus(playerIndex: 0 | 1): Promise<void> { if (!this._role || this._focus[playerIndex] === this._memberId) return; await this.connect(); this.send({ type: 'request-focus', playerIndex }) }
   releaseFocus(playerIndex: 0 | 1): void { if (!this._role || this._focus[playerIndex] !== this._memberId) return; this.send({ type: 'release-focus', playerIndex }) }
   forgetStoredRoom(): void { clearRoomSession(); this.pendingJoin = null }
-  sendAction(playerIndex: 0 | 1, action: RoomAction, elapsedMs?: number): void { if (!this._role) return; this.send({ type: 'student-action', playerIndex, action, ...(Number.isFinite(elapsedMs) ? { elapsedMs } : {}) }) }
   sendState(state: SharedRoomState): void { if (this._role !== 'coach') return; this.send({ type: 'state', state }) }
   sendLiveState(state: SharedRoomLiveState): void { if (this._role !== 'coach') return; this.send({ type: 'live-state', state }) }
-  sendPlayerState(state: RoomPlayerStateSync): void { if (!this._role) return; this.send({ type: 'player-state', state }) }
-  sendTimeState(state: RoomTimeStateSync): void { if (!this._role) return; this.send({ type: 'time-state', state }) }
-  sendResetState(state: SharedRoomState): void { if (!this._role) return; this.send({ type: 'reset-state', state }) }
+  sendPlayerState(state: RoomPlayerStateSync): void { if (!this.hasFocus(state.playerIndex)) return; this.send({ type: 'player-state', state }) }
+  sendPlayerHistoryState(state: RoomPlayerHistoryStateSync): void { if (!this.hasFocus(state.playerIndex)) return; this.send({ type: 'player-history-state', state }) }
+  sendTimeState(state: RoomTimeStateSync): void { if (this._role !== 'coach') return; this.send({ type: 'time-state', state }) }
+  sendResetState(state: SharedRoomState): void { if (this._role !== 'coach') return; this.send({ type: 'reset-state', state }) }
   disconnect(): void { this.pendingJoin = null; this.socket?.close(); this.socket = null; this._role = null; this._memberId = ''; this._focus = [null, null] }
   static inviteUrl(roomId: string, joinToken: string): string { const url = new URL(window.location.href); url.search = ''; url.hash = new URLSearchParams({ room: roomId, token: joinToken }).toString(); return url.toString() }
 }
