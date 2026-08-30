@@ -29,22 +29,7 @@ function compactPlayerState(player: PlayerState): RoomPlayerState {
   return structuredClone(state)
 }
 function compactTimeState(player: GameState['players'][number]): RoomTimeStateSync['player'] {
-  return {
-    current: player.current,
-    next: player.next,
-    paused: player.paused,
-    alive: player.alive,
-    resolution: player.resolution,
-    fallElapsedMs: player.fallElapsedMs,
-    lockElapsedMs: player.lockElapsedMs,
-    quickTurnArmed: player.quickTurnArmed,
-    score: player.score,
-    chain: player.chain,
-    incomingGarbage: player.incomingGarbage,
-    garbage: player.garbage,
-    puyoSequenceIndex: player.puyoSequenceIndex,
-    puyoSequenceSeed: player.puyoSequenceSeed,
-  }
+  return { current: player.current, next: player.next, paused: player.paused, alive: player.alive, resolution: player.resolution, fallElapsedMs: player.fallElapsedMs, lockElapsedMs: player.lockElapsedMs, quickTurnArmed: player.quickTurnArmed, score: player.score, chain: player.chain, incomingGarbage: player.incomingGarbage, garbage: player.garbage, puyoSequenceIndex: player.puyoSequenceIndex, puyoSequenceSeed: player.puyoSequenceSeed }
 }
 function dispatchFocusState(focus: RoomFocusState | null, memberId: string | null, connected: boolean, role: RoomRole | null): void {
   setRoomAccessRole(connected ? role : null)
@@ -52,13 +37,7 @@ function dispatchFocusState(focus: RoomFocusState | null, memberId: string | nul
 }
 async function copyText(text: string): Promise<void> {
   if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(text); return }
-  const textarea = document.createElement('textarea')
-  textarea.value = text
-  textarea.setAttribute('readonly', '')
-  textarea.style.position = 'fixed'
-  textarea.style.opacity = '0'
-  document.body.appendChild(textarea)
-  textarea.select()
+  const textarea = document.createElement('textarea'); textarea.value = text; textarea.setAttribute('readonly', ''); textarea.style.position = 'fixed'; textarea.style.opacity = '0'; document.body.appendChild(textarea); textarea.select()
   try { if (!document.execCommand('copy')) throw new Error('copy-failed') } finally { textarea.remove() }
 }
 
@@ -70,6 +49,9 @@ export function RoomPanel({ open, onClose, game, replay, currentTimelineMs, onRe
   const followCoachRef = useRef(true)
   const autoJoinRef = useRef('')
   const lastSnapshotSyncRef = useRef(0)
+  const pendingActionFrameRef = useRef<number | null>(null)
+  const pendingPlayerSyncRef = useRef(new Set<0 | 1>())
+  const pendingGlobalPauseRef = useRef(false)
   const [role, setRole] = useState<RoomRole | null>(null)
   const [roomId, setRoomId] = useState('')
   const [joinToken, setJoinToken] = useState('')
@@ -83,16 +65,9 @@ export function RoomPanel({ open, onClose, game, replay, currentTimelineMs, onRe
   useEffect(() => {
     const client = new RoomClient(); clientRef.current = client
     const unsubscribe = client.subscribe(message => {
-      if (message.type === 'room-created') {
-        setRole(message.role); setRoomId(message.roomId); setJoinToken(message.joinToken); setStoredRoom(getStoredRoomSession()); setStatus('コーチとして接続中'); setError('')
-        dispatchFocusState(message.focus, message.memberId, true, message.role)
-      } else if (message.type === 'room-joined') {
-        setRole(message.role); setRoomId(message.roomId); setStoredRoom(getStoredRoomSession()); setStatus(message.role === 'coach' ? 'コーチとして接続中' : '生徒として接続中'); setStudentCount(message.studentCount); setError('')
-        dispatchFocusState(message.focus, message.memberId, true, message.role)
-        if (message.state && message.role === 'student') onRemoteState(message.state)
-        if (message.liveState && message.role === 'student') onRemoteLiveState(message.liveState)
-        if (message.role === 'student' && window.location.hash) { const url = new URL(window.location.href); url.hash = ''; window.history.replaceState(null, '', url.toString()); setInvite(null) }
-      } else if (message.type === 'presence') setStudentCount(message.studentCount)
+      if (message.type === 'room-created') { setRole(message.role); setRoomId(message.roomId); setJoinToken(message.joinToken); setStoredRoom(getStoredRoomSession()); setStatus('コーチとして接続中'); setError(''); dispatchFocusState(message.focus, message.memberId, true, message.role) }
+      else if (message.type === 'room-joined') { setRole(message.role); setRoomId(message.roomId); setStoredRoom(getStoredRoomSession()); setStatus(message.role === 'coach' ? 'コーチとして接続中' : '生徒として接続中'); setStudentCount(message.studentCount); setError(''); dispatchFocusState(message.focus, message.memberId, true, message.role); if (message.state && message.role === 'student') onRemoteState(message.state); if (message.liveState && message.role === 'student') onRemoteLiveState(message.liveState); if (message.role === 'student' && window.location.hash) { const url = new URL(window.location.href); url.hash = ''; window.history.replaceState(null, '', url.toString()); setInvite(null) } }
+      else if (message.type === 'presence') setStudentCount(message.studentCount)
       else if (message.type === 'state') { if (message.state && client.role === 'student') onRemoteState(message.state) }
       else if (message.type === 'live-state') { if (message.state && client.role === 'student' && followCoachRef.current) onRemoteLiveState(message.state) }
       else if (message.type === 'time-state') window.dispatchEvent(new CustomEvent('puyo-room-time-state', { detail: message.state }))
@@ -109,76 +84,56 @@ export function RoomPanel({ open, onClose, game, replay, currentTimelineMs, onRe
     const onLocalAction = (event: Event) => {
       const detail = (event as CustomEvent<{ playerIndex: 0 | 1; action: string }>).detail
       if (!detail || (detail.playerIndex !== 0 && detail.playerIndex !== 1) || typeof detail.action !== 'string') return
-      if (!client.role) return
-
       if (detail.action === 'global-pause') {
         if (client.role !== 'coach') return
-        const index = gameRef.current.activePlayer
-        client.sendTimeState({ playerIndex: index, player: compactTimeState(gameRef.current.players[index]), tick: gameRef.current.tick, activePlayer: index, running: gameRef.current.running, elapsedMs: timelineRef.current })
-        return
+        pendingGlobalPauseRef.current = true
+      } else {
+        if (!client.role || client.focus[detail.playerIndex] !== client.memberId) return
+        pendingPlayerSyncRef.current.add(detail.playerIndex)
       }
-
-      if (client.focus[detail.playerIndex] !== client.memberId) return
-      const currentGame = gameRef.current
-      client.sendPlayerState({
-        playerIndex: detail.playerIndex,
-        player: compactPlayerState(currentGame.players[detail.playerIndex]),
-        tick: currentGame.tick,
-        activePlayer: currentGame.activePlayer,
-        running: currentGame.running,
-        elapsedMs: timelineRef.current,
+      if (pendingActionFrameRef.current !== null) return
+      pendingActionFrameRef.current = window.requestAnimationFrame(() => {
+        pendingActionFrameRef.current = null
+        if (!client.role) { pendingPlayerSyncRef.current.clear(); pendingGlobalPauseRef.current = false; return }
+        const currentGame = gameRef.current
+        if (pendingGlobalPauseRef.current && client.role === 'coach') {
+          const index = currentGame.activePlayer
+          client.sendTimeState({ playerIndex: index, player: compactTimeState(currentGame.players[index]), tick: currentGame.tick, activePlayer: index, running: currentGame.running, elapsedMs: timelineRef.current })
+        }
+        pendingGlobalPauseRef.current = false
+        for (const playerIndex of pendingPlayerSyncRef.current) {
+          client.sendPlayerState({ playerIndex, player: compactPlayerState(currentGame.players[playerIndex]), tick: currentGame.tick, activePlayer: currentGame.activePlayer, running: currentGame.running, elapsedMs: timelineRef.current })
+        }
+        pendingPlayerSyncRef.current.clear()
       })
     }
-    const onLocalReset = (event: Event) => {
-      const detail = (event as CustomEvent<ResetRoomDetail>).detail
-      if (!detail || client.role !== 'coach') return
-      client.sendResetState(detail)
-    }
-    const onTimelineChanged = () => {
-      if (client.role !== 'coach') return
-      window.setTimeout(() => {
-        client.sendState({ game: compactGame(gameRef.current), replay: compactReplay(replayRef.current), elapsedMs: timelineRef.current })
-        lastSnapshotSyncRef.current = Date.now()
-      }, 0)
-    }
-    const onTimelineControl = (event: MouseEvent) => {
-      if (client.role !== 'coach') return
-      const target = event.target as Element | null
-      if (!target?.closest('.replay-controls')) return
-      window.setTimeout(() => {
-        const currentReplay = replayRef.current
-        client.sendLiveState({ elapsedMs: timelineRef.current, cursorElapsedMs: currentReplay.frames[currentReplay.cursor]?.elapsedMs ?? timelineRef.current, playing: currentReplay.playing, speed: currentReplay.speed })
-      }, 0)
-    }
+    const onLocalReset = (event: Event) => { const detail = (event as CustomEvent<ResetRoomDetail>).detail; if (!detail || client.role !== 'coach') return; client.sendResetState(detail) }
+    const onTimelineChanged = () => { if (client.role !== 'coach') return; window.setTimeout(() => { client.sendState({ game: compactGame(gameRef.current), replay: compactReplay(replayRef.current), elapsedMs: timelineRef.current }); lastSnapshotSyncRef.current = Date.now() }, 0) }
+    const onTimelineControl = (event: MouseEvent) => { if (client.role !== 'coach') return; const target = event.target as Element | null; if (!target?.closest('.replay-controls')) return; window.setTimeout(() => { const currentReplay = replayRef.current; client.sendLiveState({ elapsedMs: timelineRef.current, cursorElapsedMs: currentReplay.frames[currentReplay.cursor]?.elapsedMs ?? timelineRef.current, playing: currentReplay.playing, speed: currentReplay.speed }) }, 0) }
+
     window.addEventListener('puyo-room-request-focus', onFocusRequest)
     window.addEventListener('puyo-room-release-focus', onFocusRelease)
     window.addEventListener('puyo-room-local-action', onLocalAction)
     window.addEventListener('puyo-room-reset', onLocalReset)
     window.addEventListener('puyo-timeline-seek', onTimelineChanged)
     document.addEventListener('click', onTimelineControl, true)
-
     return () => {
+      if (pendingActionFrameRef.current !== null) window.cancelAnimationFrame(pendingActionFrameRef.current)
+      pendingActionFrameRef.current = null
+      pendingPlayerSyncRef.current.clear()
+      pendingGlobalPauseRef.current = false
       window.removeEventListener('puyo-room-request-focus', onFocusRequest)
       window.removeEventListener('puyo-room-release-focus', onFocusRelease)
       window.removeEventListener('puyo-room-local-action', onLocalAction)
       window.removeEventListener('puyo-room-reset', onLocalReset)
       window.removeEventListener('puyo-timeline-seek', onTimelineChanged)
       document.removeEventListener('click', onTimelineControl, true)
-      unsubscribe()
-      client.disconnect()
-      clientRef.current = null
-      dispatchFocusState(null, null, false, null)
+      unsubscribe(); client.disconnect(); clientRef.current = null; dispatchFocusState(null, null, false, null)
     }
   }, [onRemoteLiveState, onRemoteState])
 
   useEffect(() => { setInvite(getRoomInviteFromUrl()); setStoredRoom(getStoredRoomSession()) }, [open])
-
-  useEffect(() => {
-    if (!role || role !== 'coach') return
-    clientRef.current?.sendState({ game: compactGame(gameRef.current), replay: compactReplay(replayRef.current), elapsedMs: timelineRef.current })
-    lastSnapshotSyncRef.current = Date.now()
-    setStatus('コーチとして接続中')
-  }, [open, role])
+  useEffect(() => { if (!role || role !== 'coach') return; clientRef.current?.sendState({ game: compactGame(gameRef.current), replay: compactReplay(replayRef.current), elapsedMs: timelineRef.current }); lastSnapshotSyncRef.current = Date.now(); setStatus('コーチとして接続中') }, [open, role])
 
   useEffect(() => {
     if (!role) return
@@ -194,10 +149,7 @@ export function RoomPanel({ open, onClose, game, replay, currentTimelineMs, onRe
         const player = current.players[playerIndex]
         client.sendTimeState({ playerIndex, player: compactTimeState(player), tick: current.tick, activePlayer: current.activePlayer, running: current.running, elapsedMs })
       }
-      if (role === 'coach' && !current.running && Date.now() - lastSnapshotSyncRef.current >= SNAPSHOT_INTERVAL_MS) {
-        client.sendState({ game: compactGame(current), replay: compactReplay(replayRef.current), elapsedMs })
-        lastSnapshotSyncRef.current = Date.now()
-      }
+      if (role === 'coach' && !current.running && Date.now() - lastSnapshotSyncRef.current >= SNAPSHOT_INTERVAL_MS) { client.sendState({ game: compactGame(current), replay: compactReplay(replayRef.current), elapsedMs }); lastSnapshotSyncRef.current = Date.now() }
     }, LIVE_INTERVAL_MS)
     return () => window.clearInterval(timer)
   }, [role])
@@ -209,18 +161,7 @@ export function RoomPanel({ open, onClose, game, replay, currentTimelineMs, onRe
   const rejoinStoredRoom = async () => { setError(''); setStatus('前回のルームへ再接続中…'); try { const rejoined = await clientRef.current?.rejoinStoredRoom(); if (!rejoined) throw new Error('no-session') } catch (caught) { setStatus('接続エラー'); setError(caught instanceof Error && caught.message !== 'no-session' ? caught.message : '保存済みルームへ再接続できませんでした') } }
   useEffect(() => { if (!open || role || !invite) return; const key = `${invite.roomId}:${invite.joinToken}`; if (autoJoinRef.current === key) return; autoJoinRef.current = key; void joinRoom() }, [open, role, invite])
   const copyInvite = async () => { if (!inviteUrl) return; try { await copyText(inviteUrl); setStatus('招待リンクをコピーしました') } catch { setError('クリップボードへコピーできませんでした') } }
-  const leaveRoom = () => { clientRef.current?.disconnect(); clientRef.current?.forgetStoredRoom(); setRole(null); setRoomId(''); setJoinToken(''); setStudentCount(0); setStoredRoom(null); setStatus('未接続'); setError(''); dispatchFocusState(null, null, false, null) }
+  const leaveRoom = () => { clientRef.current?.disconnect(); clientRef.current?.forgetStoredRoom(); setRoomAccessRole(null); setRole(null); setRoomId(''); setJoinToken(''); setStudentCount(0); setStoredRoom(null); setStatus('未接続'); setError(''); dispatchFocusState(null, null, false, null) }
   if (!open) return null
-  return <div className="room-panel-backdrop" role="presentation" onMouseDown={onClose}>
-    <section className="room-panel" role="dialog" aria-modal="true" aria-labelledby="room-panel-title" onMouseDown={event => event.stopPropagation()}>
-      <div className="room-panel-header"><div><div className="aside-label">COACHING ROOM</div><h3 id="room-panel-title">ROOM</h3><p>コーチの局面・Replay・Timelineを共有します。</p></div><button type="button" className="room-close" onClick={onClose} aria-label="ルームを閉じる">×</button></div>
-      <div className="room-status-row"><span className={`room-status room-status-${role || 'offline'}`}>{role === 'coach' ? 'COACH' : role === 'student' ? 'STUDENT' : 'OFFLINE'}</span><span>{status}</span>{role === 'coach' && <span>生徒 {studentCount} 人</span>}</div>
-      {!role && <div className="room-actions">{hasInvite && <button type="button" onClick={()=>void joinRoom()}>招待ルームに参加</button>}{storedRoom && <button type="button" onClick={()=>void rejoinStoredRoom()}>前回のルームに再接続</button>}<button type="button" onClick={()=>void createRoom()}>ルームを作成</button></div>}
-      {role === 'coach' && <div className="room-section"><strong>招待</strong><p>URLは画面に表示しません。コピーしてDiscordへ貼り付けてください。</p><button type="button" className="room-primary-action" onClick={()=>void copyInvite()}>招待リンクをコピー</button></div>}
-      {role === 'student' && <div className="room-section"><strong>コーチ追従</strong><label className="room-follow-toggle"><input type="checkbox" checked={followCoach} onChange={event=>setFollowCoach(event.target.checked)}/><span>コーチの局面・Timelineに追従する</span></label><p>OFFにすると、この端末で自分の操作・検討を続けられます。</p></div>}
-      {role && <div className="room-footer-actions"><button type="button" onClick={leaveRoom}>ルームから退出</button></div>}
-      {error && <div className="room-error" role="alert">{error}</div>}
-      <small className="room-note">招待リンクを知っている人だけが参加できます。ルームはサーバー上に一時保存され、24時間操作がないと破棄されます。</small>
-    </section>
-  </div>
+  return <div className="room-panel-backdrop" role="presentation" onMouseDown={onClose}><section className="room-panel" role="dialog" aria-modal="true" aria-labelledby="room-panel-title" onMouseDown={event=>event.stopPropagation()}><div className="room-panel-header"><div><div className="aside-label">COACHING ROOM</div><h3 id="room-panel-title">ROOM</h3><p>コーチの局面・Replay・Timelineを共有します。</p></div><button type="button" className="room-close" onClick={onClose} aria-label="ルームを閉じる">×</button></div><div className="room-status-row"><span className={`room-status room-status-${role || 'offline'}`}>{role === 'coach' ? 'COACH' : role === 'student' ? 'STUDENT' : 'OFFLINE'}</span><span>{status}</span>{role === 'coach' && <span>生徒 {studentCount} 人</span>}</div>{!role && <div className="room-actions">{hasInvite && <button type="button" onClick={()=>void joinRoom()}>招待ルームに参加</button>}{storedRoom && <button type="button" onClick={()=>void rejoinStoredRoom()}>前回のルームに再接続</button>}<button type="button" onClick={()=>void createRoom()}>ルームを作成</button></div>}{role === 'coach' && <div className="room-section"><strong>招待</strong><p>URLは画面に表示しません。コピーしてDiscordへ貼り付けてください。</p><button type="button" className="room-primary-action" onClick={()=>void copyInvite()}>招待リンクをコピー</button></div>}{role === 'student' && <div className="room-section"><strong>コーチ追従</strong><label className="room-follow-toggle"><input type="checkbox" checked={followCoach} onChange={event=>setFollowCoach(event.target.checked)}/><span>コーチの局面・Timelineに追従する</span></label><p>OFFにすると、この端末で自分の操作・検討を続けられます。</p></div>}{role && <div className="room-footer-actions"><button type="button" onClick={leaveRoom}>ルームから退出</button></div>}{error && <div className="room-error" role="alert">{error}</div>}<small className="room-note">招待リンクを知っている人だけが参加できます。ルームはサーバー上に一時保存され、24時間操作がないと破棄されます。</small></section></div>
 }
