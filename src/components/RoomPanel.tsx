@@ -109,8 +109,16 @@ export function RoomPanel({ open, onClose, game, replay, currentTimelineMs, onRe
     const onLocalAction = (event: Event) => {
       const detail = (event as CustomEvent<{ playerIndex: 0 | 1; action: string }>).detail
       if (!detail || (detail.playerIndex !== 0 && detail.playerIndex !== 1) || typeof detail.action !== 'string') return
-      if (!client.role || client.focus[detail.playerIndex] !== client.memberId) return
-      if (detail.action === 'global-pause' && client.role !== 'coach') return
+      if (!client.role) return
+
+      if (detail.action === 'global-pause') {
+        if (client.role !== 'coach') return
+        const index = gameRef.current.activePlayer
+        client.sendTimeState({ playerIndex: index, player: compactTimeState(gameRef.current.players[index]), tick: gameRef.current.tick, activePlayer: index, running: gameRef.current.running, elapsedMs: timelineRef.current })
+        return
+      }
+
+      if (client.focus[detail.playerIndex] !== client.memberId) return
       const currentGame = gameRef.current
       client.sendPlayerState({
         playerIndex: detail.playerIndex,
@@ -133,8 +141,10 @@ export function RoomPanel({ open, onClose, game, replay, currentTimelineMs, onRe
         lastSnapshotSyncRef.current = Date.now()
       }, 0)
     }
-    const onTimelineControl = () => {
+    const onTimelineControl = (event: MouseEvent) => {
       if (client.role !== 'coach') return
+      const target = event.target as Element | null
+      if (!target?.closest('.replay-controls')) return
       window.setTimeout(() => {
         const currentReplay = replayRef.current
         client.sendLiveState({ elapsedMs: timelineRef.current, cursorElapsedMs: currentReplay.frames[currentReplay.cursor]?.elapsedMs ?? timelineRef.current, playing: currentReplay.playing, speed: currentReplay.speed })
@@ -178,9 +188,10 @@ export function RoomPanel({ open, onClose, game, replay, currentTimelineMs, onRe
       const current = gameRef.current
       if (!current.running) return
       const elapsedMs = Math.max(0, timelineRef.current)
-      for (const playerIndex of [0, 1] as const) {
+      const focusedIndices = ([0, 1] as const).filter(index => client.focus[index] === client.memberId) as Array<0 | 1>
+      const indices = role === 'coach' && focusedIndices.length === 0 ? [current.activePlayer] as Array<0 | 1> : focusedIndices
+      for (const playerIndex of indices) {
         const player = current.players[playerIndex]
-        if (client.focus[playerIndex] !== client.memberId) continue
         client.sendTimeState({ playerIndex, player: compactTimeState(player), tick: current.tick, activePlayer: current.activePlayer, running: current.running, elapsedMs })
       }
       if (role === 'coach' && !current.running && Date.now() - lastSnapshotSyncRef.current >= SNAPSHOT_INTERVAL_MS) {
@@ -200,7 +211,6 @@ export function RoomPanel({ open, onClose, game, replay, currentTimelineMs, onRe
   const copyInvite = async () => { if (!inviteUrl) return; try { await copyText(inviteUrl); setStatus('招待リンクをコピーしました') } catch { setError('クリップボードへコピーできませんでした') } }
   const leaveRoom = () => { clientRef.current?.disconnect(); clientRef.current?.forgetStoredRoom(); setRole(null); setRoomId(''); setJoinToken(''); setStudentCount(0); setStoredRoom(null); setStatus('未接続'); setError(''); dispatchFocusState(null, null, false, null) }
   if (!open) return null
-
   return <div className="room-panel-backdrop" role="presentation" onMouseDown={onClose}>
     <section className="room-panel" role="dialog" aria-modal="true" aria-labelledby="room-panel-title" onMouseDown={event => event.stopPropagation()}>
       <div className="room-panel-header"><div><div className="aside-label">COACHING ROOM</div><h3 id="room-panel-title">ROOM</h3><p>コーチの局面・Replay・Timelineを共有します。</p></div><button type="button" className="room-close" onClick={onClose} aria-label="ルームを閉じる">×</button></div>
