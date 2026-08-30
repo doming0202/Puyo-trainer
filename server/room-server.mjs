@@ -24,25 +24,26 @@ function releaseMemberFocus(room, member, notify = true) { let changed = false; 
 function sanitizeState(payload) { return payload && typeof payload === 'object' ? payload : null }
 function validPlayerIndex(value) { return Number.isInteger(Number(value)) && Number(value) >= 0 && Number(value) <= 1 }
 function validTimeState(state) { return Boolean(state && typeof state === 'object' && validPlayerIndex(state.playerIndex) && state.player && typeof state.player === 'object' && Number.isFinite(state.tick) && Number.isFinite(state.elapsedMs)) }
-function normalizePlayerSync(room, state, member) {
+function normalizePlayerSync(room, state, member, writePlayer) {
   const index = Number(state.playerIndex)
   const currentGame = room.state?.game
   const clockAuthoritative = member.role === 'coach'
   return {
     ...state,
     playerIndex: index,
+    player: writePlayer && state.player ? state.player : currentGame?.players?.[index],
     tick: clockAuthoritative ? Number(state.tick) : Number(currentGame?.tick ?? state.tick),
     activePlayer: clockAuthoritative ? (Number(state.activePlayer) === 1 ? 1 : 0) : (Number(currentGame?.activePlayer) === 1 ? 1 : 0),
     running: clockAuthoritative ? Boolean(state.running) : Boolean(currentGame?.running ?? state.running),
     elapsedMs: clockAuthoritative ? Math.max(0, Number(state.elapsedMs)) : Math.max(0, Number(room.state?.elapsedMs ?? state.elapsedMs)),
   }
 }
-function mergePlayer(room, state, member) {
-  const normalized = normalizePlayerSync(room, state, member)
+function mergePlayer(room, state, member, writePlayer) {
+  const normalized = normalizePlayerSync(room, state, member, writePlayer)
   const playerIndex = normalized.playerIndex
   if (!room.state?.game?.players?.[playerIndex]) return normalized
   const players = [...room.state.game.players]
-  players[playerIndex] = { ...players[playerIndex], ...normalized.player }
+  if (normalized.player && writePlayer) players[playerIndex] = { ...players[playerIndex], ...normalized.player }
   room.state = {
     ...room.state,
     game: {
@@ -111,16 +112,15 @@ function handleMessage(socket, raw) {
     room.state = state; room.liveState = null; broadcast(room, { type: 'reset-state', state }, socket); return
   }
 
-  if (message.type === 'student-action') {
-    return send(socket, { type: 'error', code: 'action-deprecated', message: '操作命令のRoom中継は無効です' })
-  }
+  if (message.type === 'student-action') return send(socket, { type: 'error', code: 'action-deprecated', message: '操作命令のRoom中継は無効です' })
 
   if (message.type === 'time-state') {
     const incoming = message.state
     if (!validTimeState(incoming)) return
     const playerIndex = Number(incoming.playerIndex)
-    if (room.focus[playerIndex] !== member.id) return send(socket, { type: 'error', code: 'focus-not-owned', message: 'このPlayerの操作権を持っていません' })
-    const state = mergePlayer(room, incoming, member)
+    const hasFocus = room.focus[playerIndex] === member.id
+    if (member.role !== 'coach' && !hasFocus) return send(socket, { type: 'error', code: 'focus-not-owned', message: 'このPlayerの操作権を持っていません' })
+    const state = mergePlayer(room, incoming, member, hasFocus)
     broadcast(room, { type: 'time-state', state }, socket)
     return
   }
@@ -130,7 +130,7 @@ function handleMessage(socket, raw) {
     if (!incoming || typeof incoming !== 'object' || !validPlayerIndex(incoming.playerIndex) || !incoming.player || typeof incoming.player !== 'object') return
     const playerIndex = Number(incoming.playerIndex)
     if (room.focus[playerIndex] !== member.id) return send(socket, { type: 'error', code: 'focus-not-owned', message: 'このPlayerの操作権を持っていません' })
-    const state = mergePlayer(room, incoming, member)
+    const state = mergePlayer(room, incoming, member, true)
     broadcast(room, { type: 'player-state', state }, socket)
     return
   }
