@@ -12,6 +12,7 @@ const PORT = Number(process.env.PORT || 8787)
 const ROOM_TTL_MS = 24 * 60 * 60 * 1000
 const MAX_STUDENTS = 8
 const rooms = new Map()
+
 function token(size = 24) { return randomBytes(size).toString('base64url') }
 function roomId() { return randomBytes(8).toString('base64url') }
 function memberId() { return token(12) }
@@ -21,10 +22,40 @@ function focusState(room) { return [...room.focus] }
 function broadcastFocusState(room) { broadcast(room, { type: 'focus-state', focus: focusState(room) }) }
 function releaseMemberFocus(room, member, notify = true) { let changed = false; for (let index = 0; index < room.focus.length; index += 1) if (room.focus[index] === member.id) { room.focus[index] = null; changed = true }; if (changed && notify) broadcastFocusState(room); return changed }
 function sanitizeState(payload) { return payload && typeof payload === 'object' ? payload : null }
-function validPlayerIndex(value) { const index = Number(value); return Number.isInteger(index) && index >= 0 && index <= 1 }
-function allowedRoomAction(action) { return new Set(['left', 'right', 'rotate-left', 'rotate-right', 'soft-drop', 'hard-drop', 'reset-turn', 'undo', 'redo', 'toggle-player-pause']).has(action) }
-function validTimeState(state) { if (!state || typeof state !== 'object' || !validPlayerIndex(state.playerIndex)) return false; if (!state.player || typeof state.player !== 'object') return false; return Number.isFinite(state.tick) && Number.isFinite(state.elapsedMs) }
-function mergePlayer(room, state) { const playerIndex = Number(state.playerIndex); if (!room.state?.game?.players?.[playerIndex]) return; const players = [...room.state.game.players]; players[playerIndex] = { ...players[playerIndex], ...state.player }; room.state = { ...room.state, game: { ...room.state.game, players, activePlayer: state.activePlayer === 1 ? 1 : 0, running: Boolean(state.running), tick: Number.isFinite(state.tick) ? Math.max(room.state.game.tick, state.tick) : room.state.game.tick }, elapsedMs: Number.isFinite(state.elapsedMs) ? Math.max(0, state.elapsedMs) : room.state.elapsedMs } }
+function validPlayerIndex(value) { return Number.isInteger(Number(value)) && Number(value) >= 0 && Number(value) <= 1 }
+function validTimeState(state) { return Boolean(state && typeof state === 'object' && validPlayerIndex(state.playerIndex) && state.player && typeof state.player === 'object' && Number.isFinite(state.tick) && Number.isFinite(state.elapsedMs)) }
+function normalizePlayerSync(room, state, member) {
+  const index = Number(state.playerIndex)
+  const currentGame = room.state?.game
+  const clockAuthoritative = member.role === 'coach'
+  return {
+    ...state,
+    playerIndex: index,
+    tick: clockAuthoritative ? Number(state.tick) : Number(currentGame?.tick ?? state.tick),
+    activePlayer: clockAuthoritative ? (Number(state.activePlayer) === 1 ? 1 : 0) : (Number(currentGame?.activePlayer) === 1 ? 1 : 0),
+    running: clockAuthoritative ? Boolean(state.running) : Boolean(currentGame?.running ?? state.running),
+    elapsedMs: clockAuthoritative ? Math.max(0, Number(state.elapsedMs)) : Math.max(0, Number(room.state?.elapsedMs ?? state.elapsedMs)),
+  }
+}
+function mergePlayer(room, state, member) {
+  const normalized = normalizePlayerSync(room, state, member)
+  const playerIndex = normalized.playerIndex
+  if (!room.state?.game?.players?.[playerIndex]) return normalized
+  const players = [...room.state.game.players]
+  players[playerIndex] = { ...players[playerIndex], ...normalized.player }
+  room.state = {
+    ...room.state,
+    game: {
+      ...room.state.game,
+      players,
+      activePlayer: normalized.activePlayer,
+      running: normalized.running,
+      tick: normalized.tick,
+    },
+    elapsedMs: normalized.elapsedMs,
+  }
+  return normalized
+}
 function removeMember(socket) { const room = socket.room; const member = socket.member; if (!room || !member) return; const focusChanged = releaseMemberFocus(room, member, false); room.members = room.members.filter(item => item !== member); room.lastActiveAt = Date.now(); if (room.members.length === 0) rooms.delete(room.id); else { if (focusChanged) broadcastFocusState(room); broadcast(room, { type: 'presence', studentCount: room.members.filter(item => item.role === 'student').length }) }; socket.room = null; socket.member = null }
 
 function handleMessage(socket, raw) {
@@ -68,73 +99,48 @@ function handleMessage(socket, raw) {
 
   if (message.type === 'release-focus') { const playerIndex = Number(message.playerIndex); if (validPlayerIndex(playerIndex) && room.focus[playerIndex] === member.id) { room.focus[playerIndex] = null; broadcastFocusState(room) }; return }
 
-  if (message.type === 'state' && member.role === 'coach') { const state = sanitizeState(message.state); if (!state) return; room.state = state; broadcast(room, { type: 'state', state }, socket); return }
+  if (message.type === 'state') {
+    if (member.role !== 'coach') return send(socket, { type: 'error', code: 'coach-only', message: '共有Stateを変更できるのはコーチだけです' })
+    const state = sanitizeState(message.state); if (!state) return
+    room.state = state; broadcast(room, { type: 'state', state }, socket); return
+  }
 
-  if (message.type === 'reset-state') { const state = sanitizeState(message.state); if (!state) return; room.state = state; room.liveState = null; broadcast(room, { type: 'reset-state', state }, socket); return }
+  if (message.type === 'reset-state') {
+    if (member.role !== 'coach') return send(socket, { type: 'error', code: 'coach-only-reset', message: 'リセットはコーチだけが実行できます' })
+    const state = sanitizeState(message.state); if (!state) return
+    room.state = state; room.liveState = null; broadcast(room, { type: 'reset-state', state }, socket); return
+  }
 
   if (message.type === 'student-action') {
-    const playerIndex = Number(message.playerIndex); const action = typeof message.action === 'string' ? message.action : ''
-    if (!validPlayerIndex(playerIndex) || (!allowedRoomAction(action) && action !== 'global-pause')) return send(socket, { type: 'error', code: 'invalid-room-action', message: '無効なルーム操作です' })
-    if (action !== 'global-pause' && room.focus[playerIndex] !== member.id) return send(socket, { type: 'error', code: 'focus-not-owned', message: 'このPlayerの操作権を持っていません' })
-
-    if (action === 'global-pause') {
-      const running = !Boolean(room.state?.game?.running)
-      const elapsedMs = Number.isFinite(message.elapsedMs) ? Math.max(0, Number(message.elapsedMs)) : Number(room.state?.elapsedMs ?? 0)
-      if (room.state?.game?.players?.[playerIndex]) {
-        room.state = {
-          ...room.state,
-          game: { ...room.state.game, running },
-          elapsedMs,
-        }
-        send(socket, {
-          type: 'time-state',
-          state: {
-            playerIndex,
-            player: room.state.game.players[playerIndex],
-            tick: room.state.game.tick,
-            activePlayer: room.state.game.activePlayer,
-            running,
-            elapsedMs,
-          },
-        })
-        broadcast(room, {
-          type: 'time-state',
-          state: {
-            playerIndex,
-            player: room.state.game.players[playerIndex],
-            tick: room.state.game.tick,
-            activePlayer: room.state.game.activePlayer,
-            running,
-            elapsedMs,
-          },
-        }, socket)
-      } else {
-        broadcast(room, { type: 'student-action', playerIndex, action, elapsedMs }, socket)
-      }
-      return
-    }
-
-    broadcast(room, { type: 'student-action', playerIndex, action }, socket)
-    return
+    return send(socket, { type: 'error', code: 'action-deprecated', message: '操作命令のRoom中継は無効です' })
   }
 
   if (message.type === 'time-state') {
-    const state = message.state
-    if (!validTimeState(state)) return
-    const playerIndex = Number(state.playerIndex)
+    const incoming = message.state
+    if (!validTimeState(incoming)) return
+    const playerIndex = Number(incoming.playerIndex)
     if (room.focus[playerIndex] !== member.id) return send(socket, { type: 'error', code: 'focus-not-owned', message: 'このPlayerの操作権を持っていません' })
-    mergePlayer(room, state); broadcast(room, { type: 'time-state', state }, socket); return
+    const state = mergePlayer(room, incoming, member)
+    broadcast(room, { type: 'time-state', state }, socket)
+    return
   }
 
   if (message.type === 'player-state') {
-    const state = message.state
-    if (!state || typeof state !== 'object' || !validPlayerIndex(state.playerIndex) || !state.player || typeof state.player !== 'object') return
-    const playerIndex = Number(state.playerIndex)
+    const incoming = message.state
+    if (!incoming || typeof incoming !== 'object' || !validPlayerIndex(incoming.playerIndex) || !incoming.player || typeof incoming.player !== 'object') return
+    const playerIndex = Number(incoming.playerIndex)
     if (room.focus[playerIndex] !== member.id) return send(socket, { type: 'error', code: 'focus-not-owned', message: 'このPlayerの操作権を持っていません' })
-    mergePlayer(room, state); broadcast(room, { type: 'player-state', state }, socket); return
+    const state = mergePlayer(room, incoming, member)
+    broadcast(room, { type: 'player-state', state }, socket)
+    return
   }
 
-  if (message.type === 'live-state' && member.role === 'coach') { const state = sanitizeState(message.state); if (!state) return; room.liveState = state; broadcast(room, { type: 'live-state', state }, socket); return }
+  if (message.type === 'live-state') {
+    if (member.role !== 'coach') return send(socket, { type: 'error', code: 'coach-only-live', message: 'Timeline同期はコーチだけが実行できます' })
+    const state = sanitizeState(message.state); if (!state) return
+    room.liveState = state; broadcast(room, { type: 'live-state', state }, socket); return
+  }
+
   if (message.type === 'request-state') { send(socket, { type: 'state', state: room.state }); return }
 }
 
