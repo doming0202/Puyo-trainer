@@ -76,8 +76,45 @@ function handleMessage(socket, raw) {
     const playerIndex = Number(message.playerIndex); const action = typeof message.action === 'string' ? message.action : ''
     if (!validPlayerIndex(playerIndex) || (!allowedRoomAction(action) && action !== 'global-pause')) return send(socket, { type: 'error', code: 'invalid-room-action', message: '無効なルーム操作です' })
     if (action !== 'global-pause' && room.focus[playerIndex] !== member.id) return send(socket, { type: 'error', code: 'focus-not-owned', message: 'このPlayerの操作権を持っていません' })
-    const elapsedMs = Number.isFinite(message.elapsedMs) ? Math.max(0, Number(message.elapsedMs)) : undefined
-    broadcast(room, { type: 'student-action', playerIndex, action, ...(elapsedMs === undefined ? {} : { elapsedMs }) }, socket)
+
+    if (action === 'global-pause') {
+      const running = !Boolean(room.state?.game?.running)
+      const elapsedMs = Number.isFinite(message.elapsedMs) ? Math.max(0, Number(message.elapsedMs)) : Number(room.state?.elapsedMs ?? 0)
+      if (room.state?.game?.players?.[playerIndex]) {
+        room.state = {
+          ...room.state,
+          game: { ...room.state.game, running },
+          elapsedMs,
+        }
+        send(socket, {
+          type: 'time-state',
+          state: {
+            playerIndex,
+            player: room.state.game.players[playerIndex],
+            tick: room.state.game.tick,
+            activePlayer: room.state.game.activePlayer,
+            running,
+            elapsedMs,
+          },
+        })
+        broadcast(room, {
+          type: 'time-state',
+          state: {
+            playerIndex,
+            player: room.state.game.players[playerIndex],
+            tick: room.state.game.tick,
+            activePlayer: room.state.game.activePlayer,
+            running,
+            elapsedMs,
+          },
+        }, socket)
+      } else {
+        broadcast(room, { type: 'student-action', playerIndex, action, elapsedMs }, socket)
+      }
+      return
+    }
+
+    broadcast(room, { type: 'student-action', playerIndex, action }, socket)
     return
   }
 
