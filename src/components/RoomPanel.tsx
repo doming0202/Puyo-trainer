@@ -59,14 +59,14 @@ export function RoomPanel({ open, onClose, game, replay, currentTimelineMs, onRe
       else if (message.type === 'reset-state') window.dispatchEvent(new CustomEvent('puyo-room-reset-state', { detail: message.state }))
       else if (message.type === 'focus-state') dispatchFocusState(message.focus, client.memberId || null, true)
       else if (message.type === 'focus-granted') { dispatchFocusState(message.focus, client.memberId || null, true); window.dispatchEvent(new CustomEvent('puyo-room-focus-granted', { detail: { playerIndex: message.playerIndex } })) }
-      else if (message.type === 'student-action') window.dispatchEvent(new CustomEvent('puyo-room-student-action', { detail: { playerIndex: message.playerIndex, action: message.action } }))
+      else if (message.type === 'student-action') window.dispatchEvent(new CustomEvent('puyo-room-student-action', { detail: { playerIndex: message.playerIndex, action: message.action, elapsedMs: message.elapsedMs } }))
       else if (message.type === 'focus-denied') window.dispatchEvent(new CustomEvent('puyo-room-focus-denied', { detail: { playerIndex: message.playerIndex, reason: message.reason, ownerRole: message.ownerRole ?? null } }))
       else if (message.type === 'disconnected') { setRole(null); setStudentCount(0); setStatus('接続が切れました'); setStoredRoom(getStoredRoomSession()); dispatchFocusState(null, null, false) }
       else if (message.type === 'error') { setStatus('接続エラー'); setError(message.message) }
     })
     const onFocusRequest = (event: Event) => { const detail = (event as CustomEvent<FocusRequestDetail>).detail; if (!detail || (detail.playerIndex !== 0 && detail.playerIndex !== 1)) return; void client.requestFocus(detail.playerIndex) }
     const onFocusRelease = (event: Event) => { const detail = (event as CustomEvent<FocusRequestDetail>).detail; if (!detail || (detail.playerIndex !== 0 && detail.playerIndex !== 1)) return; client.releaseFocus(detail.playerIndex) }
-    const onLocalAction = (event: Event) => { const detail = (event as CustomEvent<{ playerIndex: 0 | 1; action: RoomAction }>).detail; if (!detail || (detail.playerIndex !== 0 && detail.playerIndex !== 1) || typeof detail.action !== 'string') return; if (!client.role) return; if (detail.action !== 'global-pause' && client.focus[detail.playerIndex] !== client.memberId) return; client.sendAction(detail.playerIndex, detail.action) }
+    const onLocalAction = (event: Event) => { const detail = (event as CustomEvent<{ playerIndex: 0 | 1; action: RoomAction }>).detail; if (!detail || (detail.playerIndex !== 0 && detail.playerIndex !== 1) || typeof detail.action !== 'string') return; if (!client.role) return; if (detail.action !== 'global-pause' && client.focus[detail.playerIndex] !== client.memberId) return; client.sendAction(detail.playerIndex, detail.action, timelineRef.current) }
     const onLocalReset = (event: Event) => { const detail = (event as CustomEvent<ResetRoomDetail>).detail; if (!detail || !client.role) return; client.sendResetState(detail) }
     window.addEventListener('puyo-room-request-focus', onFocusRequest)
     window.addEventListener('puyo-room-release-focus', onFocusRelease)
