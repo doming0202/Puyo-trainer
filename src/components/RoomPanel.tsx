@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { findFrameAtElapsed, type ReplayState } from '../game/replay'
 import { gameForPersistence, replayForSharing } from '../game/state-boundary'
 import type { GameState } from '../game/types'
-import type { RoomAction, RoomPlayerState, RoomPlayerStateSync, RoomTimeStateSync, SharedRoomLiveState, SharedRoomState, RoomRole, RoomFocusState } from '../game/room-client'
+import type { RoomAction, RoomTimeStateSync, SharedRoomLiveState, SharedRoomState, RoomRole, RoomFocusState } from '../game/room-client'
 import { getRoomInviteFromUrl, getStoredRoomSession, RoomClient } from '../game/room-client'
 import './RoomPanel.css'
 
@@ -55,7 +55,6 @@ export function RoomPanel({ open, onClose, game, replay, currentTimelineMs, onRe
       else if (message.type === 'presence') setStudentCount(message.studentCount)
       else if (message.type === 'state') { if (message.state && client.role === 'student') onRemoteState(message.state) }
       else if (message.type === 'live-state') { if (message.state && client.role === 'student' && followCoachRef.current) onRemoteLiveState(message.state) }
-      else if (message.type === 'player-state') window.dispatchEvent(new CustomEvent('puyo-room-player-state', { detail: message.state }))
       else if (message.type === 'time-state') window.dispatchEvent(new CustomEvent('puyo-room-time-state', { detail: message.state }))
       else if (message.type === 'reset-state') window.dispatchEvent(new CustomEvent('puyo-room-reset-state', { detail: message.state }))
       else if (message.type === 'focus-state') dispatchFocusState(message.focus, client.memberId || null, true)
@@ -65,7 +64,6 @@ export function RoomPanel({ open, onClose, game, replay, currentTimelineMs, onRe
       else if (message.type === 'disconnected') { setRole(null); setStudentCount(0); setStatus('接続が切れました'); setStoredRoom(getStoredRoomSession()); dispatchFocusState(null, null, false) }
       else if (message.type === 'error') { setStatus('接続エラー'); setError(message.message) }
     })
-
     const onFocusRequest = (event: Event) => { const detail = (event as CustomEvent<FocusRequestDetail>).detail; if (!detail || (detail.playerIndex !== 0 && detail.playerIndex !== 1)) return; void client.requestFocus(detail.playerIndex) }
     const onFocusRelease = (event: Event) => { const detail = (event as CustomEvent<FocusRequestDetail>).detail; if (!detail || (detail.playerIndex !== 0 && detail.playerIndex !== 1)) return; client.releaseFocus(detail.playerIndex) }
     const onLocalAction = (event: Event) => { const detail = (event as CustomEvent<{ playerIndex: 0 | 1; action: RoomAction }>).detail; if (!detail || (detail.playerIndex !== 0 && detail.playerIndex !== 1) || typeof detail.action !== 'string') return; if (!client.role) return; if (detail.action !== 'global-pause' && client.focus[detail.playerIndex] !== client.memberId) return; client.sendAction(detail.playerIndex, detail.action) }
@@ -78,24 +76,27 @@ export function RoomPanel({ open, onClose, game, replay, currentTimelineMs, onRe
   }, [onRemoteLiveState, onRemoteState])
 
   useEffect(() => { setInvite(getRoomInviteFromUrl()); setStoredRoom(getStoredRoomSession()) }, [open])
-  useEffect(() => { if (!open || role !== 'coach') return; clientRef.current?.sendState({ game: compactGame(gameRef.current), replay: compactReplay(replayRef.current), elapsedMs: timelineRef.current }); lastSnapshotSyncRef.current = Date.now(); setStatus('コーチとして接続中') }, [open, role])
+  useEffect(() => { if (!role || role !== 'coach') return; clientRef.current?.sendState({ game: compactGame(gameRef.current), replay: compactReplay(replayRef.current), elapsedMs: timelineRef.current }); lastSnapshotSyncRef.current = Date.now(); setStatus('コーチとして接続中') }, [open, role])
 
   useEffect(() => {
-    if (!open || !role) return
+    if (!role) return
     const timer = window.setInterval(() => {
       const client = clientRef.current
       if (!client || !client.memberId) return
       const current = gameRef.current
       const elapsedMs = Math.max(0, timelineRef.current)
-      for (const playerIndex of [0, 1] as const) {
-        if (client.focus[playerIndex] !== client.memberId) continue
-        client.sendTimeState({ playerIndex, player: compactTimeState(current.players[playerIndex]), tick: current.tick, activePlayer: current.activePlayer, running: current.running, elapsedMs })
+      if (current.running) {
+        for (const playerIndex of [0, 1] as const) {
+          const player = current.players[playerIndex]
+          if (client.focus[playerIndex] !== client.memberId || player.paused) continue
+          client.sendTimeState({ playerIndex, player: compactTimeState(player), tick: current.tick, activePlayer: current.activePlayer, running: current.running, elapsedMs })
+        }
       }
       if (role === 'coach' && !current.running && Date.now() - lastSnapshotSyncRef.current >= SNAPSHOT_INTERVAL_MS) { client.sendState({ game: compactGame(current), replay: compactReplay(replayRef.current), elapsedMs }); lastSnapshotSyncRef.current = Date.now() }
       if (role === 'coach' && replayRef.current.playing) { const currentReplay = replayRef.current; client.sendLiveState({ elapsedMs, cursorElapsedMs: currentReplay.frames[currentReplay.cursor]?.elapsedMs ?? elapsedMs, playing: true, speed: currentReplay.speed }) }
     }, LIVE_INTERVAL_MS)
     return () => window.clearInterval(timer)
-  }, [open, role])
+  }, [role])
 
   const inviteUrl = useMemo(() => roomId && joinToken ? RoomClient.inviteUrl(roomId, joinToken) : '', [roomId, joinToken])
   const hasInvite = Boolean(invite?.roomId && invite?.joinToken)
