@@ -1,4 +1,4 @@
-import type { GameState, TurnState } from './types'
+import type { GameState, TurnState, ActivePair, ResolutionState, Pair } from './types'
 import type { ReplayState } from './replay'
 import type { GameplayAction } from './keybinds'
 
@@ -19,7 +19,7 @@ export interface SharedRoomLiveState {
   speed: number
 }
 
-export type RoomPlayerState = TurnState
+export type RoomPlayerState = Omit<TurnState, 'puyoSequence'>
 
 export interface RoomPlayerStateSync {
   playerIndex: 0 | 1
@@ -30,6 +30,15 @@ export interface RoomPlayerStateSync {
   elapsedMs: number
 }
 
+export interface RoomTimeStateSync {
+  playerIndex: 0 | 1
+  tick: number
+  activePlayer: 0 | 1
+  running: boolean
+  elapsedMs: number
+  player: Pick<TurnState, 'current' | 'next' | 'paused' | 'alive' | 'resolution' | 'fallElapsedMs' | 'lockElapsedMs' | 'quickTurnArmed' | 'score' | 'chain' | 'incomingGarbage' | 'garbage' | 'puyoSequenceIndex' | 'puyoSequenceSeed'>
+}
+
 type Listener = (message: RoomMessage) => void
 
 type RoomMessage =
@@ -38,6 +47,8 @@ type RoomMessage =
   | { type: 'state'; state: SharedRoomState | null }
   | { type: 'live-state'; state: SharedRoomLiveState }
   | { type: 'player-state'; state: RoomPlayerStateSync }
+  | { type: 'time-state'; state: RoomTimeStateSync }
+  | { type: 'reset-state'; state: SharedRoomState }
   | { type: 'presence'; studentCount: number }
   | { type: 'focus-state'; focus: RoomFocusState }
   | { type: 'focus-granted'; playerIndex: 0 | 1; focus: RoomFocusState }
@@ -94,13 +105,8 @@ function clearRoomSession(): void {
   try { localStorage.removeItem(ROOM_SESSION_KEY) } catch { /* best effort */ }
 }
 
-export function getRoomInviteFromUrl(): { roomId: string; joinToken: string } | null {
-  return parseInvite()
-}
-
-export function getStoredRoomSession(): { roomId: string; joinToken: string } | null {
-  return loadRoomSession()
-}
+export function getRoomInviteFromUrl(): { roomId: string; joinToken: string } | null { return parseInvite() }
+export function getStoredRoomSession(): { roomId: string; joinToken: string } | null { return loadRoomSession() }
 
 export class RoomClient {
   private socket: WebSocket | null = null
@@ -132,10 +138,7 @@ export class RoomClient {
     if (this.socket && this.socket.readyState === WebSocket.CONNECTING) {
       return new Promise((resolve, reject) => {
         const socket = this.socket
-        if (!socket) {
-          reject(new Error('ルームサーバーへ接続できません'))
-          return
-        }
+        if (!socket) return reject(new Error('ルームサーバーへ接続できません'))
         let settled = false
         const cleanup = () => {
           if (settled) return
@@ -144,15 +147,8 @@ export class RoomClient {
           socket.removeEventListener('close', waitForClose)
           socket.removeEventListener('error', waitForClose)
         }
-        const waitForOpen = () => {
-          if (socket.readyState !== WebSocket.OPEN) return
-          cleanup()
-          resolve()
-        }
-        const waitForClose = () => {
-          cleanup()
-          reject(new Error('ルームサーバーへ接続できません'))
-        }
+        const waitForOpen = () => { if (socket.readyState === WebSocket.OPEN) { cleanup(); resolve() } }
+        const waitForClose = () => { cleanup(); reject(new Error('ルームサーバーへ接続できません')) }
         socket.addEventListener('open', waitForOpen)
         socket.addEventListener('close', waitForClose)
         socket.addEventListener('error', waitForClose)
@@ -168,11 +164,7 @@ export class RoomClient {
         settled = true
         reject(new Error('ルームサーバーへ接続できません'))
       }
-      socket.onopen = () => {
-        if (settled) return
-        settled = true
-        resolve()
-      }
+      socket.onopen = () => { if (!settled) { settled = true; resolve() } }
       socket.onerror = settleReject
       socket.onmessage = event => {
         let message: RoomMessage
@@ -199,12 +191,7 @@ export class RoomClient {
         if (message.type === 'focus-granted') this._focus = [...message.focus] as RoomFocusState
         if (message.type === 'error') {
           const stored = loadRoomSession()
-          if (
-            (message.code === 'room-not-found' || message.code === 'invalid-token') &&
-            this.pendingJoin &&
-            stored?.roomId === this.pendingJoin.roomId &&
-            stored.joinToken === this.pendingJoin.joinToken
-          ) clearRoomSession()
+          if ((message.code === 'room-not-found' || message.code === 'invalid-token') && this.pendingJoin && stored?.roomId === this.pendingJoin.roomId && stored.joinToken === this.pendingJoin.joinToken) clearRoomSession()
           this.pendingJoin = null
         }
         this.emit(message)
@@ -227,29 +214,9 @@ export class RoomClient {
     this.socket.send(JSON.stringify(payload))
   }
 
-  async createRoom(): Promise<void> {
-    clearRoomSession()
-    this.pendingJoin = null
-    await this.connect()
-    this.send({ type: 'create-room' })
-  }
-
-  async join(roomId: string, joinToken: string): Promise<void> {
-    this.pendingJoin = { roomId, joinToken }
-    await this.connect()
-    const hostToken = loadHostToken(roomId)
-    this.send({ type: 'join-room', roomId, joinToken, hostToken })
-  }
-
-  async rejoinStoredRoom(): Promise<boolean> {
-    const session = loadRoomSession()
-    if (!session) return false
-    this.pendingJoin = session
-    await this.connect()
-    const hostToken = loadHostToken(session.roomId)
-    this.send({ type: 'join-room', roomId: session.roomId, joinToken: session.joinToken, hostToken })
-    return true
-  }
+  async createRoom(): Promise<void> { clearRoomSession(); this.pendingJoin = null; await this.connect(); this.send({ type: 'create-room' }) }
+  async join(roomId: string, joinToken: string): Promise<void> { this.pendingJoin = { roomId, joinToken }; await this.connect(); this.send({ type: 'join-room', roomId, joinToken, hostToken: loadHostToken(roomId) }) }
+  async rejoinStoredRoom(): Promise<boolean> { const session = loadRoomSession(); if (!session) return false; this.pendingJoin = session; await this.connect(); this.send({ type: 'join-room', roomId: session.roomId, joinToken: session.joinToken, hostToken: loadHostToken(session.roomId) }); return true }
 
   async requestFocus(playerIndex: 0 | 1): Promise<void> {
     if (!this._role) return
@@ -259,18 +226,14 @@ export class RoomClient {
   }
 
   releaseFocus(playerIndex: 0 | 1): void {
-    if (!this._role) return
-    if (this._focus[playerIndex] !== this._memberId) return
+    if (!this._role || this._focus[playerIndex] !== this._memberId) return
     this.send({ type: 'release-focus', playerIndex })
   }
 
-  forgetStoredRoom(): void {
-    clearRoomSession()
-    this.pendingJoin = null
-  }
+  forgetStoredRoom(): void { clearRoomSession(); this.pendingJoin = null }
 
   sendAction(playerIndex: 0 | 1, action: RoomAction): void {
-    if (this._role !== 'student') return
+    if (!this._role) return
     this.send({ type: 'student-action', playerIndex, action })
   }
 
@@ -285,8 +248,18 @@ export class RoomClient {
   }
 
   sendPlayerState(state: RoomPlayerStateSync): void {
-    if (this._role !== 'coach') return
+    if (!this._role) return
     this.send({ type: 'player-state', state })
+  }
+
+  sendTimeState(state: RoomTimeStateSync): void {
+    if (!this._role) return
+    this.send({ type: 'time-state', state })
+  }
+
+  sendResetState(state: SharedRoomState): void {
+    if (!this._role) return
+    this.send({ type: 'reset-state', state })
   }
 
   disconnect(): void {
